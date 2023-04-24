@@ -1,1 +1,1 @@
-# nigeria-matching-dictionary
+# demographic_inference_nigeria
