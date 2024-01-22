@@ -14,6 +14,11 @@ TEST_USERS_PATH = '../data/all_labels_final.csv'
 GENDER_SCRAPED_PATH = '../data/gender_scraped.csv' # TODO : Document this
 # PROFILES_PATH = 'twitter_social_cohesion/data/profiles/NG' # PATH TO FOLDER CONTAINING LIST OF PARQUET FILES WITH USER PROFILES
 OUTPUT_PATH = '../predictions'
+LABELS = {
+    'ethnicity':['yoruba', 'hausa', 'igbo'],
+    'gender':['m', 'f'],
+    'religion':['christian', 'muslim']
+         }
 
 
 
@@ -94,7 +99,7 @@ def predict(feature, name_df, label_df):
 
 
 def score_for_name(name, name_df, feature):
-    scores = {l:0 for l in labels[feature]}
+    scores = {l:0 for l in LABELS[feature]}
     y = name_df[feature][name]
     if not pd.isnull(y):
         if feature=='ethnicity':
@@ -126,7 +131,7 @@ def score_for_name(name, name_df, feature):
 
 
 def merge_scores(all_scores, weights, feature):
-    merged_scores = {l:0 for l in labels[feature]}
+    merged_scores = {l:0 for l in LABELS[feature]}
     for i, scores in enumerate(all_scores):
         for l in merged_scores:
             merged_scores[l] += all_scores[i][l]*weights[i]
@@ -136,7 +141,7 @@ def merge_scores(all_scores, weights, feature):
 def score(feature, name_df, df):
     """ Compute name matching scores for all target labels of a given feature (e.g. ethnicity), and for 
     all observations of a given df """
-    scores = {l:[] for l in labels[feature]}
+    scores = {l:[] for l in LABELS[feature]}
     for i in range(df.shape[0]):
         x =  df['matched_name'].iloc[i] + df['matched_screen_name'].iloc[i]
 #         print(x)
