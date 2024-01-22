@@ -205,14 +205,18 @@ if __name__=='__main__':
     
     ## Get scores for all users
     # Load user profiles
-    df_list = []
-    for path in Path(profiles_path).glob('*.parquet'):
-        df = pd.read_parquet(path)
+#     df_list = []
+#     for path in Path(profiles_path).glob('*.parquet'):
+#         df = pd.read_parquet(path)
 
-        df['matched_screen_name'] = df['user_screen_name'].apply(lambda x: match_name(x,name_list))
-        df['matched_name'] = df['user_name'].apply(lambda x: match_name(x,name_list))
-        df_list.append(df)
-    df = pd.concat(df_list)
+#         df['matched_screen_name'] = df['user_screen_name'].apply(lambda x: match_name(x,name_list))
+#         df['matched_name'] = df['user_name'].apply(lambda x: match_name(x,name_list))
+#         df_list.append(df)
+#     df = pd.concat(df_list)
+#     df = df.reset_index(drop=True)
+    df = pd.read_parquet(profiles_path)
+    df['matched_screen_name'] = df['user_screen_name'].apply(lambda x: match_name(x,name_list))
+    df['matched_name'] = df['user_name'].apply(lambda x: match_name(x,name_list))    
     df = df.reset_index(drop=True)
     
     # Score each feature and save file
