@@ -12,14 +12,15 @@ import pickle as pkl
 import numpy as np
 import matplotlib.pyplot as plt
 
+import sys
 
 PATH_MATCHED_USERS = '../data/all_users_with_demographics.parquet'
 TEST_USERS_PATH = '../data/all_labels_final.csv' # TODO : Remove labeled_2000 file in data folder
 NAME_LIST_PATH = '../data/labeled_name_list.csv'
-ADJ_MATRIX_PATH = '../data/friendship_network/adjacency_attention_links_with_outnodes.npz'
-ADJ_NODES_PATH = '../data/friendship_network/nodes.csv'
 PREDICTIONS_PATH = '../predictions'
-
+# The following are paths to the friendship network data
+# ADJ_MATRIX_PATH = '../data/friendship_network/adjacency_attention_links_with_outnodes.npz'
+# ADJ_NODES_PATH = '../data/friendship_network/nodes.csv'
 
 def load_users_with_matched_names(force_load=False):
     """ Loads a dataframe of users matched with their names using the name list """
@@ -102,6 +103,10 @@ def get_n_friends(indices, matrix):
 
 
 if __name__=='__main__':
+    path_to_friendship_data = sys.argv[1]
+    adj_matrix_path = path_to_friendship_data + 'adjacency_attention_links_with_outnodes.npz'
+    adj_nodes_path = path_to_friendship_data + 'nodes.csv'
+    
     # Load users with matched names
     users_with_names_df = pd.read_parquet(PATH_MATCHED_USERS)
     # Load test set

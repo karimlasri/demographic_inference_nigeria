@@ -7,12 +7,12 @@ import matplotlib.pyplot as plt
 from unidecode import unidecode
 from pathlib import Path
 import os
-
+import sys
 
 NAME_LIST_PATH = '../data/labeled_name_list.csv'
 TEST_USERS_PATH = '../data/all_labels_final.csv'
 GENDER_SCRAPED_PATH = '../data/gender_scraped.csv' # TODO : Document this
-PROFILES_PATH = 'twitter_social_cohesion/data/profiles/NG' # INSERT HERE PATH TO FOLDER CONTAINING LIST OF PARQUET FILES WITH USER PROFILES
+# PROFILES_PATH = 'twitter_social_cohesion/data/profiles/NG' # PATH TO FOLDER CONTAINING LIST OF PARQUET FILES WITH USER PROFILES
 OUTPUT_PATH = '../predictions'
 
 
@@ -163,6 +163,8 @@ def score(feature, name_df, df):
 
     
 if __name__=='__main__':
+    profiles_path = sys.argv[1] # Path to folder containing list of parquet files with user profiles
+    
     # Load and preprocess labeled list of names
     name_df = load_name_df(NAME_LIST_PATH)
     
@@ -199,7 +201,7 @@ if __name__=='__main__':
     ## Get scores for all users
     # Load user profiles
     df_list = []
-    for path in Path(path_users).glob('*.parquet'):
+    for path in Path(profiles_path).glob('*.parquet'):
         df = pd.read_parquet(path)
 
         df['matched_screen_name'] = df['user_screen_name'].apply(match_name)
