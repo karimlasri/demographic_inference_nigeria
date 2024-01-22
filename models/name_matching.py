@@ -189,7 +189,7 @@ if __name__=='__main__':
     name_list = [name for name in name_list if len(name)>2]
     
     label_df['matched_screen_name'] = label_df['screen_name'].apply(lambda x: match_name(x,name_list))
-    label_df['matched_name'] = label_df['name'].apply(match_name)
+    label_df['matched_name'] = label_df['name'].apply(lambda x: match_name(x,name_list))
     
     gender_df = pd.read_csv('../data/gender_scraped.csv')
     gender_df['Forename'] = gender_df['Forename'].str.lower()
@@ -204,8 +204,8 @@ if __name__=='__main__':
     for path in Path(profiles_path).glob('*.parquet'):
         df = pd.read_parquet(path)
 
-        df['matched_screen_name'] = df['user_screen_name'].apply(match_name)
-        df['matched_name'] = df['user_name'].apply(match_name)
+        df['matched_screen_name'] = df['user_screen_name'].apply(lambda x: match_name(x,name_list))
+        df['matched_name'] = df['user_name'].apply(lambda x: match_name(x,name_list))
         df_list.append(df)
     df = pd.concat(df_list)
     df = df.reset_index(drop=True)
