@@ -226,3 +226,9 @@ if __name__=='__main__':
         feature_scores = score(feature, name_df, df)
         feature_scores['user_id'] = df['user_id']
         feature_scores.to_csv(f'{OUTPUT_PATH}/name_matching_scores_{feature}.csv')
+        
+        feature_labels = LABELS[feature]
+        predictions = feature_scores[feature_labels].apply(lambda x:feature_labels[np.argmax(x.values)], axis=1)
+
+        df[f'{feature}_name_predict'] = predictions
+    df.to_csv('../data/all_users_with_demographics.csv')
