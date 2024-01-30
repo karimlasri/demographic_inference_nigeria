@@ -109,7 +109,7 @@ def get_n_friends(indices, matrix):
 
 if __name__=='__main__':
     path_to_friendship_data = sys.argv[1]
-    adj_matrix_path = path_to_friendship_data + 'adjacency_attention_links_with_outnodes.npz'
+    adj_matrix_path = path_to_friendship_data + 'adjacency_matrix.npz'
     adj_nodes_path = path_to_friendship_data + 'nodes.csv'
     
     # Load users with matched names
