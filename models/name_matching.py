@@ -169,7 +169,7 @@ def score(feature, name_df, df):
     
 if __name__=='__main__':
     profiles_path = sys.argv[1] # Path to folder containing list of parquet files with user profiles
-    
+    print('yo')
     # Load and preprocess labeled list of names
     name_df = load_name_df(NAME_LIST_PATH)
     
@@ -202,7 +202,7 @@ if __name__=='__main__':
     
     # Get scores for test_df
     scores_test = score('ethnicity', name_df, label_df)
-    
+    print('yi')
     ## Get scores for all users
     # Load user profiles
 #     df_list = []
@@ -215,10 +215,11 @@ if __name__=='__main__':
 #     df = pd.concat(df_list)
 #     df = df.reset_index(drop=True)
     df = pd.read_parquet(profiles_path)
+    print('ya')
     df['matched_screen_name'] = df['user_screen_name'].apply(lambda x: match_name(x,name_list))
     df['matched_name'] = df['user_name'].apply(lambda x: match_name(x,name_list))    
     df = df.reset_index(drop=True)
-    
+    print('yu')
     # Score each feature and save file
     if not os.path.exists(OUTPUT_PATH):
         os.mkdir(OUTPUT_PATH)
@@ -226,3 +227,9 @@ if __name__=='__main__':
         feature_scores = score(feature, name_df, df)
         feature_scores['user_id'] = df['user_id']
         feature_scores.to_csv(f'{OUTPUT_PATH}/name_matching_scores_{feature}.csv')
+        
+        feature_labels = LABELS[feature]
+        predictions = feature_scores[feature_labels].apply(lambda x:feature_labels[np.argmax(x.values)], axis=1)
+
+        df[f'{feature}_name_predict'] = predictions
+    df.to_csv('../data/all_users_with_demographics.csv')

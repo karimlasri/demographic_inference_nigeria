@@ -26,8 +26,8 @@ def preprocess_name_df(name_df):
     return name_df
 
 
-def load_name_list(path='data/labeled_name_list.csv'):
-    name_df = load_names_df(path=path)
+def load_name_list(path='../data/labeled_name_list.csv'):
+    name_df = load_names_df(path_names=path)
     name_df = preprocess_name_df(name_df)
     name_list = name_df.index.tolist()
     name_list.sort(key=len, reverse=True)

@@ -104,11 +104,11 @@ def get_n_friends(indices, matrix):
 
 if __name__=='__main__':
     path_to_friendship_data = sys.argv[1]
-    adj_matrix_path = path_to_friendship_data + 'adjacency_attention_links_with_outnodes.npz'
+    adj_matrix_path = path_to_friendship_data + 'adjacency_matrix.npz'
     adj_nodes_path = path_to_friendship_data + 'nodes.csv'
     
     # Load users with matched names
-    users_with_names_df = pd.read_parquet(PATH_MATCHED_USERS)
+    users_with_names_df = pd.read_csv(PATH_MATCHED_USERS)
     # Load test set
 #     labels_test = pd.read_csv(TEST_USERS_PATH).drop(['name', 'screen_name', 'link', 'comment'], axis=1)
     
@@ -144,7 +144,7 @@ if __name__=='__main__':
     matched_names_users = all_users_with_name['user_id'].values
     
     # Load adjacency matrix
-    friendship, nodes = load_friendship_data(ADJ_MATRIX_PATH, ADJ_NODES_PATH)
+    friendship, nodes = load_friendship_data(adj_matrix_path, adj_nodes_path)
     user_ids = all_users_with_name['user_id']
     user_ids = user_ids.reset_index(drop=True)
     
