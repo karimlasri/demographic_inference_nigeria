@@ -14,10 +14,15 @@ import matplotlib.pyplot as plt
 
 import sys
 
-PATH_MATCHED_USERS = '../data/all_users_with_demographics.parquet'
+PATH_MATCHED_USERS = '../data/all_users_with_demographics.csv'
 TEST_USERS_PATH = '../data/all_labels_final.csv' # TODO : Remove labeled_2000 file in data folder
 NAME_LIST_PATH = '../data/labeled_name_list.csv'
 PREDICTIONS_PATH = '../predictions'
+CLASSES = {
+    'ethnicity':('hausa', 'igbo', 'yoruba'),
+    'gender':('m','f'),
+    'religion':('christian', 'muslim')
+         }
 # The following are paths to the friendship network data
 # ADJ_MATRIX_PATH = '../data/friendship_network/adjacency_attention_links_with_outnodes.npz'
 # ADJ_NODES_PATH = '../data/friendship_network/nodes.csv'
@@ -108,7 +113,7 @@ if __name__=='__main__':
     adj_nodes_path = path_to_friendship_data + 'nodes.csv'
     
     # Load users with matched names
-    users_with_names_df = pd.read_parquet(PATH_MATCHED_USERS)
+    users_with_names_df = pd.read_csv(PATH_MATCHED_USERS)
     # Load test set
 #     labels_test = pd.read_csv(TEST_USERS_PATH).drop(['name', 'screen_name', 'link', 'comment'], axis=1)
     
@@ -203,17 +208,17 @@ if __name__=='__main__':
 
     for label in ('ethnicity', 'gender', 'religion'):
         all_labels = users_with_names_df['{}_name_predict'.format(label)].unique()
-        binary_df = pd.get_dummies(all_users_with_name2.loc[subset['user_id']].drop(['{}_name_predict'.format(l) for l in labels if l != label], axis=1).replace(['cameroon','unisex','christian/muslim', 'muslim/christian'], 'None'), columns=['{}_name_predict'.format(label)])
+        binary_df = pd.get_dummies(all_users_with_name2.loc[subset['user_id']].drop(['{}_name_predict'.format(l) for l in CLASSES if l != label], axis=1).replace(['cameroon','unisex','christian/muslim', 'muslim/christian'], 'None'), columns=['{}_name_predict'.format(label)])
     #     none_df = binary_df['{}_name_predict_None'.format(label)]
     #     init_df = binary_df[['{}_name_predict_{}'.format(label, e) for e in labels[label]]]
-        init_df = df[['{}_name_predict_{}'.format(label, e) for e in labels[label]]]
+        init_df = df[['{}_name_predict_{}'.format(label, e) for e in CLASSES[label]]]
         scores_df = pd.DataFrame(init_df)
         scores_matrix = scores_df.values
         init_matrix = init_df.values
-        idx_filter_matrix = [idx for i, idx in enumerate(indices_test) if idx is not None and labels_test.iloc[i][label] in labels[label]]
-        idx_filter_labels = [i for i, idx in enumerate(indices_test) if idx is not None and labels_test.iloc[i][label] in labels[label]]
+        idx_filter_matrix = [idx for i, idx in enumerate(indices_test) if idx is not None and labels_test.iloc[i][label] in CLASSES[label]]
+        idx_filter_labels = [i for i, idx in enumerate(indices_test) if idx is not None and labels_test.iloc[i][label] in CLASSES[label]]
         print(len(idx_filter_labels))
-        predictions = [labels[label][p] for p in scores_matrix[idx_filter_matrix, :].argmax(axis=1)]
+        predictions = [CLASSES[label][p] for p in scores_matrix[idx_filter_matrix, :].argmax(axis=1)]
         acc = accuracy_score(predictions, labels_test.iloc[idx_filter_labels][label])
         print('Performing label propagation for {}.'.format(label))
         print('Initial accuracy : {}'.format(round(acc,2)))
@@ -233,7 +238,7 @@ if __name__=='__main__':
             scores_matrix = alpha * csr_matrix.dot(norm_adj_matrix, scores_matrix) + (1-alpha)*init_matrix
 
     #         print('{} sec elapsed'.format(time.time()-start_time))
-            predictions = [labels[label][p] for p in scores_matrix[idx_filter_matrix, :].argmax(axis=1)]
+            predictions = [CLASSES[label][p] for p in scores_matrix[idx_filter_matrix, :].argmax(axis=1)]
             acc = accuracy_score(predictions, labels_test.iloc[idx_filter_labels][label])
             cov = len([idx for idx in indices_test if idx is not None and scores_matrix[idx].sum() > 0])/labels_test.shape[0]
             print('Acc. at generation {} : {}'.format(g+1, round(acc,2)))
@@ -250,11 +255,11 @@ if __name__=='__main__':
         accs_thres = []
         coverages = []
         for min_friends in np.arange(0, 500, 10):
-            predictions = [labels[label][p] for p in scores_matrix[[idx for i, idx in enumerate(indices_test) if idx is not None and n_friends[i]<=min_friends+10 and labels_test.iloc[i][label] in labels[label]], :].argmax(axis=1)]
-            acc = accuracy_score(predictions, labels_test.iloc[[i for i,idx in enumerate(indices_test) if idx is not None and n_friends[i]<=min_friends+10 and labels_test.iloc[i][label] in labels[label]]][label])
+            predictions = [CLASSES[label][p] for p in scores_matrix[[idx for i, idx in enumerate(indices_test) if idx is not None and n_friends[i]<=min_friends+10 and labels_test.iloc[i][label] in CLASSES[label]], :].argmax(axis=1)]
+            acc = accuracy_score(predictions, labels_test.iloc[[i for i,idx in enumerate(indices_test) if idx is not None and n_friends[i]<=min_friends+10 and labels_test.iloc[i][label] in CLASSES[label]]][label])
             accs_thres.append(acc)
     #         coverage = len([f for i, f in enumerate(n_friends) if f>=min_friends and labels_test.iloc[i][label] in labels[label]])/labels_test.shape[0]
-            coverage = len([f for i, f in enumerate(n_friends) if f>=min_friends and labels_test.iloc[i][label] in labels[label]])/labels_test[labels_test[label].isin(labels[label])].shape[0]
+            coverage = len([f for i, f in enumerate(n_friends) if f>=min_friends and labels_test.iloc[i][label] in labels[label]])/labels_test[labels_test[label].isin(CLASSES[label])].shape[0]
 
             coverages.append(coverage)
         print(coverages[0])
