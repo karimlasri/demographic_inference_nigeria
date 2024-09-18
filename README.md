@@ -7,16 +7,15 @@ This repository contains the implementation of [https://ojs.aaai.org/index.php/I
 # Usage
 First perform name matching by running performing the following command :
 ```
-cd models
-python3 match_names.py <path_to_user_profiles>
+python3 models/match_names.py <path_to_user_profiles>
 ```
 This will save scores from name matching for each user in the predictions folder.
 
 Then perform label propagation by running : 
 ```
-python3 label_propagation.py <path_to_friendship_data>
+python3 models/label_propagation.py <path_to_friendship_data>
 ```
 For example :
 ```
-python3 label_propagation.py data/friendship_network/
+python3 models/label_propagation.py data/friendship_network/
 ```
