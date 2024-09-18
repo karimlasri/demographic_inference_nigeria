@@ -23,6 +23,12 @@ CLASSES = {
     'gender':('m','f'),
     'religion':('christian', 'muslim')
          }
+
+NM_RESULTS = {
+    'ethnicity':{'cov':0.7, 'acc':0.86, 'maj':0.46494464944649444},
+    'religion':{'cov':0.57, 'acc': 0.91, 'maj':0.7652284263959391},
+    'gender':{'cov':0.65, 'acc':0.83, 'maj':0.7226993865030675}
+}
 # The following are paths to the friendship network data
 # ADJ_MATRIX_PATH = '../data/friendship_network/adjacency_attention_links_with_outnodes.npz'
 # ADJ_NODES_PATH = '../data/friendship_network/nodes.csv'
@@ -114,6 +120,7 @@ if __name__=='__main__':
     
     # Load users with matched names
     users_with_names_df = pd.read_csv(PATH_MATCHED_USERS)
+    print('users', users_with_names_df.shape)
     # Load test set
 #     labels_test = pd.read_csv(TEST_USERS_PATH).drop(['name', 'screen_name', 'link', 'comment'], axis=1)
     
@@ -145,8 +152,10 @@ if __name__=='__main__':
     all_users_with_name = pd.concat([users_with_names_df, label_df])
     all_users_with_name['user_id'] = all_users_with_name['user_id'].astype('int64')
     all_users_with_name = all_users_with_name.drop_duplicates('user_id')
+    print('all_users', all_users_with_name.shape)
     
     matched_names_users = all_users_with_name['user_id'].values
+    print('matched', matched_names_users.shape)
     
     # Load adjacency matrix
     friendship, nodes = load_friendship_data(adj_matrix_path, adj_nodes_path)
@@ -155,8 +164,9 @@ if __name__=='__main__':
     
     filtered_friendship, subset = filter_matrix(friendship, nodes, user_ids)
     subset = subset.reset_index(drop=True)
+    print('subset', subset.shape)
     
-    subset2 = subset.join(user_ids.reset_index().set_index('user_id').rename({'index':'orig_index'}, axis=1), on='user_id', how='left').drop_duplicates('user_id') 
+    # subset2 = subset.join(user_ids.reset_index().set_index('user_id').rename({'index':'orig_index'}, axis=1), on='user_id', how='left').drop_duplicates('user_id') 
     subset_index_to_id = {row['user_id']:i for i, row in subset.iterrows()}
     
     # Get user ids positions from nodes list
@@ -166,7 +176,7 @@ if __name__=='__main__':
     # print(labels_test.columns.values)
 
     # labels_test = pd.read_csv('labeled_2000.csv').drop(['name', 'screen_name', 'link', 'comment'], axis=1) # pd.read_csv('label_df_test.csv')
-    valid_id = labels_test['user_id'].apply(lambda x:'+' not in x)
+    valid_id = labels_test['user_id'].apply(lambda x:'+' not in x) # Removing malformatted ids
     labels_test = labels_test[valid_id]
     labels_test['user_id'] = labels_test['user_id'].astype('int64')
     labels_test['ethnicity'] = labels_test['ethnicity'].str.lower()
@@ -176,9 +186,12 @@ if __name__=='__main__':
         idx = subset_index_to_id.get(int(user_id), None)
         indices_test.append(idx)
         
-    all_users_with_name2 = all_users_with_name.set_index('user_id')
-    all_users_with_name2.index = all_users_with_name2.index.astype('int64')
-    
+#     all_users_with_name2 = all_users_with_name.set_index('user_id')
+#     all_users_with_name2.index = all_users_with_name2.index.astype('int64')
+#     print('all_users2', all_users_with_name2.shape)
+    all_users_with_name = all_users_with_name.set_index('user_id')
+    all_users_with_name.index = all_users_with_name.index.astype('int64')
+    print('all_users', all_users_with_name.shape)
     
     # Get friendship matrix
     symmetric = True
@@ -192,14 +205,15 @@ if __name__=='__main__':
         n_friends = get_n_friends(indices_test, filtered_friendship)
         norm_filtered_friendship = normalize(filtered_friendship.astype('float64'), norm='l1', axis=1)
     
+    print('norm_friendship', norm_filtered_friendship.shape)
     
     df = pd.DataFrame(subset['user_id'])
     for feature in ('ethnicity', 'religion', 'gender'):
         feature_df = pd.read_csv(f'{PREDICTIONS_PATH}/name_matching_scores_{feature}.csv').drop('Unnamed: 0', axis=1)
-        feature_df = feature_df.rename({k:'{}_name_predict_{}'.format(feature, k) for k in feature_df.columns if k!='user_id'}, axis=1)
+        feature_df = feature_df.rename({k:'{}_name_predict_{}'.format(feature, k) for k in feature_df.columns if k!='user_id'}, axis=1).drop_duplicates('user_id')
         df = df.merge(feature_df, on='user_id', how='left').fillna(0)
         
-        
+    print('df', df.shape)
         
    # Perform Label Propagation
     alpha = 0.5
@@ -208,12 +222,16 @@ if __name__=='__main__':
 
     for label in ('ethnicity', 'gender', 'religion'):
         all_labels = users_with_names_df['{}_name_predict'.format(label)].unique()
-        binary_df = pd.get_dummies(all_users_with_name2.loc[subset['user_id']].drop(['{}_name_predict'.format(l) for l in CLASSES if l != label], axis=1).replace(['cameroon','unisex','christian/muslim', 'muslim/christian'], 'None'), columns=['{}_name_predict'.format(label)])
+#         binary_df = pd.get_dummies(all_users_with_name2.loc[subset['user_id']].drop(['{}_name_predict'.format(l) for l in CLASSES if l != label], axis=1).replace(['cameroon','unisex','christian/muslim', 'muslim/christian'], 'None'), columns=['{}_name_predict'.format(label)])
+        binary_df = pd.get_dummies(all_users_with_name.loc[subset['user_id']].drop(['{}_name_predict'.format(l) for l in CLASSES if l != label], axis=1).replace(['cameroon','unisex','christian/muslim', 'muslim/christian'], 'None'), columns=['{}_name_predict'.format(label)])
+        print('binary', binary_df.shape)
     #     none_df = binary_df['{}_name_predict_None'.format(label)]
     #     init_df = binary_df[['{}_name_predict_{}'.format(label, e) for e in labels[label]]]
         init_df = df[['{}_name_predict_{}'.format(label, e) for e in CLASSES[label]]]
+        print('init_df', init_df.shape)
         scores_df = pd.DataFrame(init_df)
         scores_matrix = scores_df.values
+        print('scores_matrix', scores_matrix.shape)
         init_matrix = init_df.values
         idx_filter_matrix = [idx for i, idx in enumerate(indices_test) if idx is not None and labels_test.iloc[i][label] in CLASSES[label]]
         idx_filter_labels = [i for i, idx in enumerate(indices_test) if idx is not None and labels_test.iloc[i][label] in CLASSES[label]]
@@ -226,9 +244,11 @@ if __name__=='__main__':
         print('Initial coverage : {}'.format(round(cov,2)))
         accs = [acc]
 
+        print('norm_friendship', norm_filtered_friendship.shape)
         start_time = time.time()
         if keep_init:
             keep_vector = np.array([1 if (row.sum() == 0) else 0 for row in scores_matrix]).reshape(-1, 1)
+            print('keep_vector', keep_vector.shape)
             norm_adj_matrix = norm_filtered_friendship.multiply(keep_vector)
         else:
             norm_adj_matrix = norm_filtered_friendship
@@ -245,10 +265,10 @@ if __name__=='__main__':
             print('Cov. at generation {} : {}'.format(g+1, round(cov,2)))
             accs.append(acc)
 
-        pkl.dump(predictions, open('data/lab_prop_predictions_{}_{}_20-03-03.npz'.format(label, alpha), 'wb'))
+        pkl.dump(predictions, open('../data/lab_prop_predictions_{}_{}_20-03-03.npz'.format(label, alpha), 'wb'))
     #     scores_df.index.to_frame().to_csv('lab_prop_user_ids_{}.csv'.format(label))
         df['user_id'].to_csv('lab_prop_user_ids.csv')
-        np.save('predictions/scores_matrix_{}_{}_20-03-03.npz'.format(label, alpha), scores_matrix)
+        np.save('../predictions/scores_matrix_{}_{}_20-03-03.npz'.format(label, alpha), scores_matrix)
     #     pkl.dump(accs, open('data/accuracies_label_propagation_{}_{}.pkl'.format(label, alpha), 'wb'))
 
         results = {}
@@ -259,7 +279,7 @@ if __name__=='__main__':
             acc = accuracy_score(predictions, labels_test.iloc[[i for i,idx in enumerate(indices_test) if idx is not None and n_friends[i]<=min_friends+10 and labels_test.iloc[i][label] in CLASSES[label]]][label])
             accs_thres.append(acc)
     #         coverage = len([f for i, f in enumerate(n_friends) if f>=min_friends and labels_test.iloc[i][label] in labels[label]])/labels_test.shape[0]
-            coverage = len([f for i, f in enumerate(n_friends) if f>=min_friends and labels_test.iloc[i][label] in labels[label]])/labels_test[labels_test[label].isin(CLASSES[label])].shape[0]
+            coverage = len([f for i, f in enumerate(n_friends) if f>=min_friends and labels_test.iloc[i][label] in CLASSES[label]])/labels_test[labels_test[label].isin(CLASSES[label])].shape[0]
 
             coverages.append(coverage)
         print(coverages[0])
@@ -268,9 +288,9 @@ if __name__=='__main__':
         results['threshold'] = np.arange(0, 500, 10)
         results['accuracy'] = accs_thres
         results['cdf'] = [1-c for c in coverages]
-        results['majority_baseline'] = nm_results[label]['maj']
-        results['name_matching_cov'] = nm_results[label]['cov']
-        results['name_matching_acc'] = nm_results[label]['acc']
+        results['majority_baseline'] = NM_RESULTS[label]['maj']
+        results['name_matching_cov'] = NM_RESULTS[label]['cov']
+        results['name_matching_acc'] = NM_RESULTS[label]['acc']
         pkl.dump(results, open('results_{}.pkl'.format(label), 'wb'))
         ax.plot(np.arange(0, 500, 10), accs_thres, color='orange', marker='o')
         ax.set_ylabel('Accuracy on {}'.format(label), color='orange')
@@ -278,9 +298,9 @@ if __name__=='__main__':
         ax.set_ylim(0,1)
         ax2 = ax.twinx()
         ax2.plot(np.arange(0, 500, 10), [1-c for c in coverages], color='blue', marker='o')
-        ax2.axhline(y=nm_results[label]['acc'], color='orange', linestyle='--', label='Name Matching Accuracy')
-        ax2.axhline(y=nm_results[label]['cov'], color='blue', linestyle='--', label='Name Matching Coverage')
-        ax2.axhline(y=nm_results[label]['maj'], color='black', linestyle='--', label='Majority Baseline')
+        ax2.axhline(y=NM_RESULTS[label]['acc'], color='orange', linestyle='--', label='Name Matching Accuracy')
+        ax2.axhline(y=NM_RESULTS[label]['cov'], color='blue', linestyle='--', label='Name Matching Coverage')
+        ax2.axhline(y=NM_RESULTS[label]['maj'], color='black', linestyle='--', label='Majority Baseline')
         ax2.set_ylabel('Cumulative distribution function kept users', color='blue')
         ax2.set_ylim(0,1)
         plt.legend()
