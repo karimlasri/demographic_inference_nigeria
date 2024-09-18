@@ -1,7 +1,8 @@
 import pandas as pd
 from pathlib import Path
-from loading_utils import load_labelled_df, load_names_df, load_user_ids, load_friendship_data
-from data_formatting import preprocess_name_df, load_name_list, preprocess_label_df
+from match_names import predict
+from loading_utils import load_labelled_df, load_name_mapping, load_user_ids, load_friendship_data
+from format_data import load_names_list, preprocess_label_df
 from scipy.sparse import load_npz
 from sklearn.preprocessing import normalize
 
@@ -14,10 +15,10 @@ import matplotlib.pyplot as plt
 
 import sys
 
-PATH_MATCHED_USERS = '../data/all_users_with_demographics.csv'
-TEST_USERS_PATH = '../data/all_labels_final.csv' # TODO : Remove labeled_2000 file in data folder
-NAME_LIST_PATH = '../data/labeled_name_list.csv'
-PREDICTIONS_PATH = '../predictions'
+PATH_MATCHED_USERS = 'data/all_users_with_demographics.csv'
+ANNOTATIONS_PATH = 'data/annotations_demographics.csv' 
+NAMES_TO_ATTRIBUTES_MAP = 'data/names_attribute_map.csv'
+PREDICTIONS_PATH = 'predictions/'
 CLASSES = {
     'ethnicity':('hausa', 'igbo', 'yoruba'),
     'gender':('m','f'),
@@ -41,55 +42,13 @@ def load_users_with_matched_names(force_load=False):
         df_list.append(df)
     users_with_names_df = pd.concat(df_list)
     return users_with_names_df
+    
 
-
-def predict(feature, name_df, search_df):
-    results_list = list()
-    for i in range(search_df.shape[0]):
-        x = search_df['matched_name'].iloc[i] + search_df['matched_screen_name'].iloc[i]
-        x = [n.lower() for n in list(dict.fromkeys(x))]
-        if len(x) > 0:
-            if len(x) == 1:
-                results_list.append(name_df[feature][x[0]])
-            elif len(x) > 1:
-                predicted_list = list()
-                for name in x:
-                    if name in name_df[feature]:
-                        predicted_list.append(name_df[feature][name])
-                if feature == 'gender':
-                    predicted_list = [x for x in predicted_list if x != 'unisex']
-                    if len(predicted_list) > 0:
-                        results_list.append(predicted_list[0])
-                    else:
-                        results_list.append('None')
-                elif feature == 'ethnicity':
-                    if 'yoruba' in predicted_list:
-                        results_list.append('yoruba')
-                    elif 'hausa' in predicted_list:
-                        results_list.append('hausa')
-                    else:
-                        results_list.append(predicted_list[0])
-                elif feature == 'religion':
-                    predicted_list = [x for x in predicted_list if not str(x) == 'nan']
-                    if len(predicted_list) > 0:
-                        if 'muslim' in predicted_list:
-                            results_list.append('muslim')
-                        else:
-                            results_list.append(predicted_list[0])
-                    else:
-                        results_list.append('None')
-            else:
-                results_list.append('None')
-        else:
-            results_list.append('None')
-    return results_list
-
-
-def predict_from_names_label_df(label_df, name_df):
-    label_df['ethnicity_name_predict'] = predict('ethnicity', name_df, label_df)
-    label_df['gender_name_predict'] = predict('gender', name_df, label_df)
-    label_df['religion_name_predict'] = predict('religion', name_df, label_df)
-    return label_df
+def predict_from_names_label_df(labeled_profiles, names_mapping):
+    labeled_profiles['ethnicity_name_predict'] = predict('ethnicity', names_mapping, labeled_profiles)
+    labeled_profiles['gender_name_predict'] = predict('gender', names_mapping, labeled_profiles)
+    labeled_profiles['religion_name_predict'] = predict('religion', names_mapping, labeled_profiles)
+    return labeled_profiles
 
 
 def load_friendship_data(matrix_path, nodes_path):
@@ -120,36 +79,24 @@ if __name__=='__main__':
     
     # Load users with matched names
     users_with_names_df = pd.read_csv(PATH_MATCHED_USERS)
-    print('users', users_with_names_df.shape)
     # Load test set
-#     labels_test = pd.read_csv(TEST_USERS_PATH).drop(['name', 'screen_name', 'link', 'comment'], axis=1)
-    
-#     # Preprocess test set
-#     valid_id = labels_test['user_id'].apply(lambda x:'+' not in x)
-#     labels_test = labels_test[valid_id]
-#     labels_test['user_id'] = labels_test['user_id'].astype('int64')
-#     labels_test['ethnicity'] = labels_test['ethnicity'].str.lower()
-    
-    label_df = pd.read_csv(TEST_USERS_PATH)
-    # Load names labels
-    name_df = load_names_df(NAME_LIST_PATH)
-    # Preprocess names dataframe
-    name_df = preprocess_name_df(name_df)
+    labeled_profiles = pd.read_csv(TEST_USERS_PATH)
+    # Load mapping from names to demographic attributes
+    names_mapping = load_name_mapping(NAMES_TO_ATTRIBUTES_MAP)
 
     # Get list of names
-    name_list = load_name_list(NAME_LIST_PATH)
+    name_list = load_names_list(NAMES_TO_ATTRIBUTES_MAP)
     
     # Preprocess test set
-    label_df = preprocess_label_df(label_df)
-    label_df = predict_from_names_label_df(label_df, name_df)
-    label_df['valid_id'] = label_df['user_id'].apply(lambda x:'+' not in x)
-    label_df = label_df[label_df['valid_id']]
-    label_df['user_id'] = label_df['user_id'].astype('int64')
-    # label_df = label_df[label_df['user_id'].isin(labels_test['user_id'])]
-    label_df = label_df[['user_id', 'ethnicity_name_predict', 'gender_name_predict', 'religion_name_predict']]
+    labeled_profiles = preprocess_label_df(labeled_profiles)
+    labeled_profiles = predict_from_names_label_df(labeled_profiles, names_mapping)
+    labeled_profiles['valid_id'] = labeled_profiles['user_id'].apply(lambda x:'+' not in x)
+    labeled_profiles = labeled_profiles[labeled_profiles['valid_id']]
+    labeled_profiles['user_id'] = labeled_profiles['user_id'].astype('int64')
+    labeled_profiles = labeled_profiles[['user_id', 'ethnicity_name_predict', 'gender_name_predict', 'religion_name_predict']]
 
     # Get all users with names
-    all_users_with_name = pd.concat([users_with_names_df, label_df])
+    all_users_with_name = pd.concat([users_with_names_df, labeled_profiles])
     all_users_with_name['user_id'] = all_users_with_name['user_id'].astype('int64')
     all_users_with_name = all_users_with_name.drop_duplicates('user_id')
     print('all_users', all_users_with_name.shape)
@@ -166,16 +113,13 @@ if __name__=='__main__':
     subset = subset.reset_index(drop=True)
     print('subset', subset.shape)
     
-    # subset2 = subset.join(user_ids.reset_index().set_index('user_id').rename({'index':'orig_index'}, axis=1), on='user_id', how='left').drop_duplicates('user_id') 
     subset_index_to_id = {row['user_id']:i for i, row in subset.iterrows()}
     
     # Get user ids positions from nodes list
-    labels_test = pd.read_csv(TEST_USERS_PATH).drop(['name', 'screen_name', 'link'], axis=1) # pd.read_csv('label_df_test.csv')
+    labels_test = pd.read_csv(ANNOTATIONS_PATH).drop(['name', 'screen_name', 'link'], axis=1) 
     labels_test = labels_test[labels_test['org']=='0']
     labels_test = labels_test[labels_test['suspended']=='0']
-    # print(labels_test.columns.values)
 
-    # labels_test = pd.read_csv('labeled_2000.csv').drop(['name', 'screen_name', 'link', 'comment'], axis=1) # pd.read_csv('label_df_test.csv')
     valid_id = labels_test['user_id'].apply(lambda x:'+' not in x) # Removing malformatted ids
     labels_test = labels_test[valid_id]
     labels_test['user_id'] = labels_test['user_id'].astype('int64')
@@ -222,7 +166,6 @@ if __name__=='__main__':
 
     for label in ('ethnicity', 'gender', 'religion'):
         all_labels = users_with_names_df['{}_name_predict'.format(label)].unique()
-#         binary_df = pd.get_dummies(all_users_with_name2.loc[subset['user_id']].drop(['{}_name_predict'.format(l) for l in CLASSES if l != label], axis=1).replace(['cameroon','unisex','christian/muslim', 'muslim/christian'], 'None'), columns=['{}_name_predict'.format(label)])
         binary_df = pd.get_dummies(all_users_with_name.loc[subset['user_id']].drop(['{}_name_predict'.format(l) for l in CLASSES if l != label], axis=1).replace(['cameroon','unisex','christian/muslim', 'muslim/christian'], 'None'), columns=['{}_name_predict'.format(label)])
         print('binary', binary_df.shape)
     #     none_df = binary_df['{}_name_predict_None'.format(label)]

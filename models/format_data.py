@@ -1,5 +1,6 @@
 import re
 from loading_utils import *
+from match_names import predict
 from sklearn.model_selection import train_test_split
 import pandas as pd
 from scipy.sparse import coo_array, load_npz, save_npz
@@ -10,32 +11,21 @@ import json
 
 
 def modify_gender(x):
-    if x == 'male':
-        return 'm'
-    elif x == 'female':
-        return 'f'
-    else:
-        return x
+    """ We keep only the gender's first letter to represent the class. """
+    if x:
+        if x!='unisex':
+            return x[0]
 
 
-def preprocess_name_df(name_df):
-    name_df['gender'] = name_df['gender'].apply(modify_gender)
-    name_df = name_df.drop_duplicates(subset=['name'])
-    name_df = name_df.set_index(['name'])
-    #name_df.head()
-    return name_df
-
-
-def load_name_list(path='../data/labeled_name_list.csv'):
-    name_df = load_names_df(path_names=path)
-    name_df = preprocess_name_df(name_df)
+def load_names_list(names_map_path='data/names_attributes_map.csv'):
+    name_df = load_name_mapping(names_map_path=names_map_path)
     name_list = name_df.index.tolist()
     name_list.sort(key=len, reverse=True)
     name_list = [name for name in name_list if len(name) > 2]
     return name_list
 
 
-NAME_LIST = load_name_list()
+NAME_LIST = load_names_list()
 
 
 def match_name(x):
@@ -45,52 +35,6 @@ def match_name(x):
         return match_list
     else:
         return list()
-
-
-def all_equal(iterator):
-    return len(set(iterator)) <= 1
-
-
-def predict(feature, name_df, search_df):
-    results_list = list()
-    for i in range(search_df.shape[0]):
-        x = search_df['matched_name'].iloc[i] + search_df['matched_screen_name'].iloc[i]
-        x = [n.lower() for n in list(dict.fromkeys(x))]
-        if len(x) > 0:
-            if len(x) == 1:
-                results_list.append(name_df[feature][x[0]])
-            elif len(x) > 1:
-                predicted_list = list()
-                for name in x:
-                    if name in name_df[feature]:
-                        predicted_list.append(name_df[feature][name])
-                if feature == 'gender':
-                    predicted_list = [x for x in predicted_list if x != 'unisex']
-                    if len(predicted_list) > 0:
-                        results_list.append(predicted_list[0])
-                    else:
-                        results_list.append('None')
-                elif feature == 'ethnicity':
-                    if 'yoruba' in predicted_list:
-                        results_list.append('yoruba')
-                    elif 'hausa' in predicted_list:
-                        results_list.append('hausa')
-                    else:
-                        results_list.append(predicted_list[0])
-                elif feature == 'religion':
-                    predicted_list = [x for x in predicted_list if not str(x) == 'nan']
-                    if len(predicted_list) > 0:
-                        if 'muslim' in predicted_list:
-                            results_list.append('muslim')
-                        else:
-                            results_list.append(predicted_list[0])
-                    else:
-                        results_list.append('None')
-            else:
-                results_list.append('None')
-        else:
-            results_list.append('None')
-    return results_list
 
 
 def predict_from_names_label_df(label_df, name_df):
@@ -147,13 +91,6 @@ def get_name_based_labels(filtered_count_df_train):
         ['user_id', 'ethnicity_name_predict', 'religion_name_predict', 'gender_name_predict']]
     name_labels_train = name_labels_train.drop_duplicates('user_id')
     return name_labels_train
-
-
-# def get_idfs(n_users_per_token): ## OLD
-#     idfs = {}
-#     for i, row in n_users_per_token.iterrows():
-#         idfs[row.name] = row['binary_count']
-#     return idfs
 
 
 def get_X(count_df, idfs, feature_format='binary'):

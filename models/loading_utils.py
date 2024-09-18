@@ -7,11 +7,11 @@ from scipy.sparse import load_npz
 
 PATH_UNIGRAMS = '/scratch/spf248/twitter_social_cohesion/data/demographic_cls/unigrams/NG/tweet_text/' #'/scratch/spf248/twitter_social_cohesion/data/deprecated/unigrams/' # Path to tweets
 PATH_DESC = '/scratch/spf248/twitter_social_cohesion/data/demographic_cls/unigrams/NG/user_description/' #'/scratch/spf248/twitter_social_cohesion/data/deprecated/unigrams/' # Path to tweets
-PATH_LABELS = '/scratch/spf248/twitter_social_cohesion/data/demographic_cls/' # Path to labeled user data (ethnicity, religion and gender, along with names)
+PATH_LABELS = 'data/' # Path to labeled user data (ethnicity, religion and gender, along with names)
 PATH_MATCHED_USERS = '/scratch/spf248/Karim/twitter_social_cohesion/data/matched_user_names'
 
 
-def load_labelled_df(path_labels=os.path.join(PATH_LABELS, 'labeled_2000.csv')):
+def load_labelled_df(path_labels=os.path.join(PATH_LABELS, 'annotations_demographics.csv')):
     """ Loads the dataframe which includes users labelled with their ethnicity, gender and religion.
     This dataframe has 1000 entries so far. """
     label_df = pd.read_csv(path_labels)
@@ -21,10 +21,14 @@ def load_labelled_df(path_labels=os.path.join(PATH_LABELS, 'labeled_2000.csv')):
     return label_df
 
 
-def load_names_df(path_names='data/labeled_name_list.csv'):
+def load_name_mapping(names_mapping_path='data/names_attribute_map.csv'):
     """ Loads the dataframe which includes names labelled with their ethnicity, gender and religion.
     This dataframe has 2813 rows so far. """
-    return pd.read_csv(path_names)
+    names_mapping = pd.read_csv(names_mapping_path)
+    names_mapping['gender'] = names_mapping['gender'].apply(modify_gender)
+    names_mapping = names_mapping.drop_duplicates(subset=['name'])
+    names_mapping = names_mapping.set_index(['name'])
+    return names_mapping
 
 
 def load_users_with_matched_names():
@@ -77,6 +81,7 @@ def load_descriptions(users_filter_df=None):
     desc_df = pd.concat(df_list)
     print('Done.')
     return desc_df
+
 
 def load_voc():
     languages = ['igbo', 'hausa', 'yoruba']
