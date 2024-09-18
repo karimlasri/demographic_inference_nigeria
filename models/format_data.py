@@ -1,6 +1,6 @@
 import re
 from loading_utils import *
-from match_names import predict
+from match_names import predict, match_names
 from sklearn.model_selection import train_test_split
 import pandas as pd
 from scipy.sparse import coo_array, load_npz, save_npz
@@ -19,34 +19,16 @@ def modify_gender(x):
 
 def load_names_list(names_map_path='data/names_attributes_map.csv'):
     name_df = load_name_mapping(names_map_path=names_map_path)
-    name_list = name_df.index.tolist()
-    name_list.sort(key=len, reverse=True)
-    name_list = [name for name in name_list if len(name) > 2]
-    return name_list
-
-
-NAME_LIST = load_names_list()
-
-
-def match_name(x):
-    regex = re.compile(fr"\b(?:{'|'.join(NAME_LIST)})", re.IGNORECASE)
-    match_list = [match.group(0) for match in regex.finditer(x)]
-    if len(match_list) > 0:
-        return match_list
-    else:
-        return list()
-
+    names_list = name_df.index.tolist()
+    names_list.sort(key=len, reverse=True)
+    names_list = [name for name in names_list if len(name) > 2]
+    return names_list
+    
 
 def predict_from_names_label_df(label_df, name_df):
     label_df['ethnicity_name_predict'] = predict('ethnicity', name_df, label_df)
     label_df['gender_name_predict'] = predict('gender', name_df, label_df)
     label_df['religion_name_predict'] = predict('religion', name_df, label_df)
-    return label_df
-
-
-def preprocess_label_df(label_df):
-    label_df['matched_screen_name'] = label_df['screen_name'].apply(match_name)
-    label_df['matched_name'] = label_df['name'].apply(match_name)
     return label_df
 
 
@@ -164,7 +146,6 @@ def get_Xy_train_name(feature_df, users_with_names_df, feature_format='binary', 
         save_npz('sparse_X_train_{}_{}.npz'.format(feature_format, frac), sparse_features)
 
         json.dump(feature_to_id, open('data/formatted_data/feature_to_id_{}_{}.json'.format(feature_format, frac), 'w'))
-        #pkl.dump(feature_to_id, open('feature_to_id_{}.pkl'.format(feature_format), 'w', encoding='utf-8'))
 
         name_labels_train.to_csv('data/formatted_data/name_labels_train_{}_{}.csv'.format(feature_format, frac))
 
@@ -310,7 +291,8 @@ if __name__=='__main__':
     name_df = load_names_df()
     label_df = load_labelled_df()
     name_df = preprocess_name_df(name_df)
-    label_df = preprocess_label_df(label_df)
+    names_list = load_names_list()
+    label_df = match_names(label_df, names_list)
     label_df = predict_from_names_label_df(label_df, name_df)
     if train_on_matched:
         X_train, y_train, X_test, y_test = load_Xy_on_name_matched(label_df, frac=0.1)

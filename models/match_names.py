@@ -33,6 +33,12 @@ def match_name(x, names_list):
         return list()
 
 
+def match_names(user_profiles, names_list):
+    user_profiles['matched_screen_name'] = user_profiles['screen_name'].apply(lambda x: match_name(x,name_list))
+    user_profiles['matched_name'] = user_profiles['name'].apply(lambda x: match_name(x,name_list))
+    return user_profiles
+
+
 def predict(attr, names_mapping, user_profiles):
     predictions = list()
     for i in range(user_profiles.shape[0]):

@@ -1,7 +1,10 @@
 # Graph Based Demographic Inference in Nigerian Twitter
 This repository contains the implementation of [Large-Scale Demographic Inference of Social Media Users in a Low-Resource Scenario](https://ojs.aaai.org/index.php/ICWSM/article/view/22165/21944), accepted at ICWSM 2023.
 
-# Data structure
+# Data Format
+## User profiles
+
+## Followership data
 
 
 # Usage
