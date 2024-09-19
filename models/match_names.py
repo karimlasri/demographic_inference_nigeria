@@ -43,43 +43,40 @@ def match_names(user_profiles, names_list):
 
 def predict(attr, names_mapping, user_profiles):
     """ Predict a demographic attribute for given users based on their matched name and screen name, and the name mapping to that attribute """
-    predictions = list()
-    for i in range(user_profiles.shape[0]):
-        x = user_profiles['matched_name'][i] + user_profiles['matched_screen_name'][i]
-        x = [n.lower() for n in list(dict.fromkeys(x))]
-        if len(x) > 0:
-            if len(x) == 1:
-                predictions.append(names_mapping[attr][x[0]])
-            elif len(x) > 1:
-                predicted_list = list()
-                for name in x:
+    predictions = []
+    for _, row in user_profiles.itterrows():
+        matched_names = row['matched_name'] + row['matched_screen_name']
+        matched_names = [name.lower() for name in list(dict.fromkeys(matched_names))]
+        if len(matched_names) > 0:
+            if len(matched_names) == 1:
+                predictions.append(names_mapping[attr][matched_names[0]])
+            elif len(matched_names) > 1:
+                predicted_list = []
+                for name in matched_names:
                     prediction = names_mapping[attr][name]
                     if '/' in prediction:
                         predicted_list += prediction.split('/')
                     else:
                         predicted_list.append(prediction)
-                if attr == 'gender':
-                    predicted_list = [x for x in predicted_list if x != 'unisex']
-                    if len(predicted_list )> 0:
+                if len(predicted_list)==0:
+                    predictions.append('None')
+                else:
+                    if attr == 'gender':
+                        predicted_list = [x for x in predicted_list if x != 'unisex']
                         predictions.append(predicted_list[0])
-                    else:
-                        predictions.append('None')
-                elif attr == 'ethnicity':
-                    if 'yoruba' in predicted_list:
-                        predictions.append('yoruba')
-                    elif 'hausa' in predicted_list:
-                        predictions.append('hausa')
-                    else:
-                        predictions.append(predicted_list[0])
-                elif attr == 'religion':
-                    predicted_list = [x for x in predicted_list if not str(x) == 'nan']
-                    if len(predicted_list)> 0:
+                    elif attr == 'ethnicity':
+                        if 'yoruba' in predicted_list:
+                            predictions.append('yoruba')
+                        elif 'hausa' in predicted_list:
+                            predictions.append('hausa')
+                        else:
+                            predictions.append(predicted_list[0])
+                    elif attr == 'religion':
+                        predicted_list = [x for x in predicted_list if str(x) != 'nan']
                         if 'muslim' in predicted_list:
                             predictions.append('muslim')
                         else:
                             predictions.append(predicted_list[0])
-                    else:
-                        predictions.append('None')
             else:
                 predictions.append('None')
         else:
@@ -88,6 +85,8 @@ def predict(attr, names_mapping, user_profiles):
 
 
 def score_for_name(name, names_mapping, attr, gender_df):
+    """ Given a name, returns scores for each class of a given attribute based on 
+    the name mapping and an additional scraped gender score database. """
     scores = {l:0 for l in CLASSES[attr]}
     y = names_mapping[attr][name]
     if not pd.isnull(y):
@@ -119,6 +118,7 @@ def score_for_name(name, names_mapping, attr, gender_df):
 
 
 def merge_scores(all_scores, weights, attr):
+    """ Merges all scores that were obtained from matched names by weighting scores based on the name lengths. """
     merged_scores = {l:0 for l in CLASSES[attr]}
     for i, scores in enumerate(all_scores):
         for l in merged_scores:
@@ -134,21 +134,22 @@ def score(attr, names_mapping, df, gender_df):
         x =  df['matched_name'].iloc[i] + df['matched_screen_name'].iloc[i]
         x = list(set(x)) # We keep only one instance of each name
 
-        all_scores = [score_for_name(unidecode(n.lower()), names_mapping, attr, gender_df) for n in x]
         # Compute a score vector for each name (e.g. if not ambiguous, 1 for target label, if ambiguous such as
         # muslim/christian, 0.5 for each), results in a vector list
         # Example : if 'Anu' is 'Yoruba' and 'Ife' is 'Yoruba/Igbo', returns [(0,1,0), (0,0.5,0.5)]
+        all_scores = [score_for_name(unidecode(n.lower()), names_mapping, attr, gender_df) for n in x]
         
-        sumlen = max(sum([len(n) for n in x]), 1)
         # Here we compute the sum of lengths for names
+        sumlen = max(sum([len(n) for n in x]), 1)
         
-        weights = [len(n)/sumlen for n in x]
+
         # Weights for each name are its length
+        weights = [len(n)/sumlen for n in x]
         
-        merged = merge_scores(all_scores, weights, attr)
         # The merged vector is the mean of obtained vectors in "all_scores" variable, weighted by each name's length.
         # Example : with 'Abba' and 'Aashif', sumlen=10, and weights=[4/10, 6/10] (the longer a name, the more reliable it is)
-        
+        merged = merge_scores(all_scores, weights, attr)
+                
         for l in scores:
             scores[l].append(merged[l])
     return pd.DataFrame(scores)
@@ -206,10 +207,9 @@ if __name__=='__main__':
     # Load and preprocess labeled test users list
     labeled_profiles = pd.read_csv(ANNOTATIONS_PATH)
     labeled_profiles = labeled_profiles.dropna()
-    
-    labeled_profiles['ethnicity'] = labeled_profiles['ethnicity'].apply(str.lower)
-    labeled_profiles['religion'] = labeled_profiles['religion'].apply(str.lower)
-    labeled_profiles['gender'] = labeled_profiles['gender'].apply(str.lower)
+
+    for attr in ('ethnicity', 'religion', 'gender'):
+    labeled_profiles[attr] = labeled_profiles[attr].apply(str.lower)
     
     labeled_profiles = labeled_profiles.loc[labeled_profiles['gender'].isin(['m', 'f'])]
     labeled_profiles = labeled_profiles.loc[labeled_profiles['ethnicity'].isin(['igbo', 'yoruba', 'hausa'])]
