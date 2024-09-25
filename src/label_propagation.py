@@ -1,11 +1,12 @@
 import pandas as pd
-from pathlib import Path
-from match_names import predict_all_from_names
-from loading_utils import load_labelled_df, load_name_mapping, load_user_ids, load_friendship_data
+from loading_utils import (
+     load_name_mapping, 
+     load_user_ids, 
+     load_profiles_for_lp, 
+     load_followership_for_lp, 
+     load_nm_scores_for_lp
+     )
 from format_data import preprocess_label_df, keep_valid_ids, filter_test_set
-from scipy.sparse import load_npz
-from sklearn.preprocessing import normalize
-
 from scipy.sparse import csr_matrix
 from sklearn.metrics import accuracy_score
 import pickle as pkl
@@ -23,11 +24,12 @@ CLASSES = {
     'religion':('christian', 'muslim')
          }
 
+
 NM_RESULTS_PATH = 'data/name_matching_eval.json'
 if os.path.exists(NM_RESULTS_PATH):
     with open(NM_RESULTS_PATH) as eval_file:
         NM_RESULTS = json.load(eval_file)
-        
+
 
 EVAL_BY_CONNECTIONS_PARAMS = {
                 'min_connections'=0
@@ -40,12 +42,6 @@ LABEL_PROPAGATION_PARAMS = {
     'num_iterations' = 10
     'keep_init' = True
 }
-
-
-def load_friendship_data(matrix_path, nodes_path):
-    friendship_matrix = load_npz(matrix_path)
-    nodes = pd.read_csv(nodes_path).reset_index().rename(columns={'index':'user_index', '0':'user_id'})
-    return friendship_matrix, nodes
 
 
 def filter_matrix(matrix, nodes, user_ids):
@@ -100,59 +96,6 @@ def get_n_connections(users_matrix_indices, adj_matrix):
         else:
             n_connections.append(0)
     return n_connections
-    
-
-def load_profiles_for_lp(matched_profiles_path, names_mapping_path, annotations_path):
-    """ Load and preprocess user profiles along with matched names, and the labeled set. """
-    # Load users with matched names
-    name_matched_profiles = pd.read_csv(matched_profiles_path)
-    # Load mapping from names to demographic attributes and name list
-    names_mapping = load_name_mapping(names_mapping_path)
-
-    # Load test set
-    labeled_profiles = pd.read_csv(annotations_path)
-    # Preprocess test set
-    labeled_profiles = preprocess_label_df(labeled_profiles)
-    labeled_profiles = predict_attrs_from_names(labeled_profiles, names_mapping)
-    labeled_profiles = keep_valid_ids(labeled_profiles)
-
-    # Concatenate the labeled test set with matched names from the user set as those can also be used for label propagation
-    columns_to_keep = ['user_id'] + [f'{attr}_name_predict' for attr in CLASSES]
-    name_matched_profiles = pd.concat([name_matched_profiles[columns_to_keep], labeled_profiles[columns_to_keep]])
-    labeled_profiles = filter_test_set(labeled_profiles, columns_to_keep)
-    
-    # Further preprocess profiles
-    name_matched_profiles['user_id'] = name_matched_profiles['user_id'].astype('int64')
-    name_matched_profiles = name_matched_profiles.drop_duplicates('user_id')    
-    name_matched_profiles = name_matched_profiles.set_index('user_id')
-    return name_matched_profiles, labeled_profiles
-
-
-def load_followership_for_lp(path_to_followership_data, name_matched_profiles, symmetrize=True):
-    """ Load and prepare followership data for label propagation. """
-    ## Load followership data
-    adj_matrix_path = path_to_followership_data + 'adjacency_matrix.npz'
-    adj_nodes_path = path_to_followership_data + 'nodes.csv'
-    adj_matrix, nodes = load_friendship_data(adj_matrix_path, adj_nodes_path)
-    # Filter data to only keep user ids present in the target profiles
-    user_ids = name_matched_profiles['user_id'].reset_index(drop=True)
-    target_adj_matrix, target_nodes = filter_matrix(adj_matrix, nodes, user_ids)
-    # Normalize adjacency matrix, and symmetrize if required
-    if symmetrize:
-        target_adj_matrix = target_adj_matrix.transpose() + target_adj_matrix
-    norm_adj_matrix = normalize(target_adj_matrix.astype('float64'), norm='l1', axis=1)
-    
-    return norm_adj_matrix, target_nodes
-
-
-def load_nm_scores_for_lp(target_nodes):
-    """ Load name matching scores to initialize label propagation, as this is a better signal than binary predictions. """
-    nm_scores_df = pd.DataFrame(target_nodes['user_id'])
-    for attr in CLASSES:
-        attr_scores = pd.read_csv(f'{SCORES_PATH}/name_matching_scores_{feature}.csv').drop('Unnamed: 0', axis=1)
-        attr_scores = attr_scores.rename({k:'{}_name_predict_{}'.format(feature, k) for k in attr_scores.columns if k!='user_id'}, axis=1).drop_duplicates('user_id')
-        nm_scores_df = nm_scores_df.merge(attr_scores, on='user_id', how='left').fillna(0)
-    return nm_scores_df
 
 
 def get_eval_by_connections(labeled_profiles, attr, attr_classes, test_matrix_indices, scores_matrix, eval_by_connections_params):

@@ -3,22 +3,15 @@ import os
 from pathlib import Path
 import pickle as pkl
 from scipy.sparse import load_npz
+from sklearn.preprocessing import normalize
 
 
-PATH_UNIGRAMS = '/scratch/spf248/twitter_social_cohesion/data/demographic_cls/unigrams/NG/tweet_text/' #'/scratch/spf248/twitter_social_cohesion/data/deprecated/unigrams/' # Path to tweets
-PATH_DESC = '/scratch/spf248/twitter_social_cohesion/data/demographic_cls/unigrams/NG/user_description/' #'/scratch/spf248/twitter_social_cohesion/data/deprecated/unigrams/' # Path to tweets
-PATH_LABELS = 'data/' # Path to labeled user data (ethnicity, religion and gender, along with names)
-PATH_MATCHED_USERS = '/scratch/spf248/Karim/twitter_social_cohesion/data/matched_user_names'
-
-
-def load_labelled_df(path_labels=os.path.join(PATH_LABELS, 'annotations_demographics.csv')):
-    """ Loads the dataframe which includes users labelled with their ethnicity, gender and religion.
-    This dataframe has 1000 entries so far. """
-    label_df = pd.read_csv(path_labels)
-    for column in ['ethnicity', 'religion', 'gender']:
-        label_df[column] = label_df[column].str.lower()
-    label_df['user_id'] = label_df['user_id'].astype(str)
-    return label_df
+SCORES_PATH = 'predictions/'
+CLASSES = {
+    'ethnicity':('hausa', 'igbo', 'yoruba'),
+    'gender':('m','f'),
+    'religion':('christian', 'muslim')
+         }
 
 
 def load_name_mapping(names_mapping_path='data/names_attribute_map.csv'):
@@ -47,84 +40,61 @@ def load_name_gender_prop(gender_proportions_path='data/names_gender_proportions
     return gender_proportions
 
 
-def load_users_with_matched_names():
-    """ Loads a dataframe of users matched with their names using the name list """
-    df_list = list()
-    for path in Path(PATH_MATCHED_USERS).glob('*.parquet'):
-        df = pd.read_parquet(path)
-        df_list.append(df)
-    users_with_names_df = pd.concat(df_list)
-    return users_with_names_df
+def load_followership_data(adj_matrix_path, nodes_path):
+    """ Loads the raw followership matrix and nodes list. """
+    adj_matrix = load_npz(adj_matrix_path)
+    nodes = pd.read_csv(nodes_path).reset_index().rename(columns={'index':'user_index', '0':'user_id'})
+    return adj_matrix, nodes
 
 
-def load_raw_unigrams(users_filter_df=None):
-    """ Loads raw tweet unigrams as dataframe. It contains four columns :
-    - user_id
-    - token
-    - count of that token for that user_id
-    - total count of tokens for that user_id
-    Optionally, unigrams are filtered on a set of users e.g. :
-    - users who have been assigned a name (for training on matched names)
-    - users who are in our labeled dataset (for training on labeled data only) """
-    print('Loading raw unigrams...')
-    df_list = list()
-    for path in Path(PATH_UNIGRAMS).glob('*.parquet'):
-        df = pd.read_parquet(path)
-        if users_filter_df is not None: # Filters unigrams to users whose name has been matched
-            df = df.loc[df['user_id'].isin(users_filter_df['user_id'].tolist())]
-        df_list.append(df)
-    unigrams_df = pd.concat(df_list)
-    print('Done.')
-    return unigrams_df
+def load_profiles_for_lp(matched_profiles_path, names_mapping_path, annotations_path):
+    """ Load and preprocess user profiles along with matched names, and the labeled set. """
+    # Load users with matched names
+    name_matched_profiles = pd.read_csv(matched_profiles_path)
+    # Load mapping from names to demographic attributes and name list
+    names_mapping = load_name_mapping(names_mapping_path)
 
+    # Load test set
+    labeled_profiles = pd.read_csv(annotations_path)
+    # Preprocess test set
+    labeled_profiles = preprocess_label_df(labeled_profiles)
+    labeled_profiles = predict_attrs_from_names(labeled_profiles, names_mapping)
+    labeled_profiles = keep_valid_ids(labeled_profiles)
 
-def load_descriptions(users_filter_df=None):
-    """ Loads raw tweet unigrams as dataframe. It contains four columns :
-    - user_id
-    - token
-    - count of that token for that user_id
-    - total count of tokens for that user_id
-    Optionally, unigrams are filtered on a set of users e.g. :
-    - users who have been assigned a name (for training on matched names)
-    - users who are in our labeled dataset (for training on labeled data only) """
-    print('Loading raw unigrams...')
-    df_list = list()
-    for path in Path(PATH_DESC).glob('*.parquet'):
-        df = pd.read_parquet(path)
-        if users_filter_df is not None: # Filters unigrams to users whose name has been matched
-            df = df.loc[df['user_id'].isin(users_filter_df['user_id'].tolist())]
-        df_list.append(df)
-    desc_df = pd.concat(df_list)
-    print('Done.')
-    return desc_df
-
-
-def load_voc():
-    languages = ['igbo', 'hausa', 'yoruba']
-    voc_dfs = {}
-    all_voc = []
-    for language in languages:
-        voc_df = pd.read_csv('data/vocab/{}_vocab.csv'.format(language))
-        voc_dfs[language] = voc_df
-        all_voc += voc_df[language.capitalize()].to_list()
-    return all_voc
-
-
-def load_stopwords():
-    # From https://github.com/stopwords-iso/stopwords-en/blob/master/stopwords-en.txt
-    with open('stopwords.txt', 'rt') as stop_fl:
-        stopwords = [w.strip() for w in stop_fl.readlines()]
-    return stopwords
-
-
-def load_user_ids():
-    unigram_users = pkl.load(open('data/all_unigram_user_ids.pkl', 'rb'))
-    matched_names_users = pkl.load(open('data/all_name_matching_user_ids.pkl', 'rb'))
-    return unigram_users, matched_names_users
-
-
-def load_friendship_data():
-    friendship_matrix = load_npz('data/friendship_network/adjacency_attention_links_with_outnodes.npz')
-    nodes = pd.read_csv('data/friendship_network/nodes.csv').reset_index().rename(columns={'index':'user_index', '0':'user_id'})
-    return friendship_matrix, nodes
+    # Concatenate the labeled test set with matched names from the user set as those can also be used for label propagation
+    columns_to_keep = ['user_id'] + [f'{attr}_name_predict' for attr in CLASSES]
+    name_matched_profiles = pd.concat([name_matched_profiles[columns_to_keep], labeled_profiles[columns_to_keep]])
+    labeled_profiles = filter_test_set(labeled_profiles, columns_to_keep)
     
+    # Further preprocess profiles
+    name_matched_profiles['user_id'] = name_matched_profiles['user_id'].astype('int64')
+    name_matched_profiles = name_matched_profiles.drop_duplicates('user_id')    
+    name_matched_profiles = name_matched_profiles.set_index('user_id')
+    return name_matched_profiles, labeled_profiles
+
+
+def load_followership_for_lp(path_to_followership_data, name_matched_profiles, symmetrize=True):
+    """ Load and prepare followership data for label propagation. """
+    ## Load followership data
+    adj_matrix_path = path_to_followership_data + 'adjacency_matrix.npz'
+    adj_nodes_path = path_to_followership_data + 'nodes.csv'
+    adj_matrix, nodes = load_followership_data(adj_matrix_path, adj_nodes_path)
+    # Filter data to only keep user ids present in the target profiles
+    user_ids = name_matched_profiles['user_id'].reset_index(drop=True)
+    target_adj_matrix, target_nodes = filter_matrix(adj_matrix, nodes, user_ids)
+    # Normalize adjacency matrix, and symmetrize if required
+    if symmetrize:
+        target_adj_matrix = target_adj_matrix.transpose() + target_adj_matrix
+    norm_adj_matrix = normalize(target_adj_matrix.astype('float64'), norm='l1', axis=1)
+    
+    return norm_adj_matrix, target_nodes
+
+
+def load_nm_scores_for_lp(target_nodes):
+    """ Load name matching scores to initialize label propagation, as this is a better signal than binary predictions. """
+    nm_scores_df = pd.DataFrame(target_nodes['user_id'])
+    for attr in CLASSES:
+        attr_scores = pd.read_csv(f'{SCORES_PATH}/name_matching_scores_{feature}.csv').drop('Unnamed: 0', axis=1)
+        attr_scores = attr_scores.rename({k:'{}_name_predict_{}'.format(feature, k) for k in attr_scores.columns if k!='user_id'}, axis=1).drop_duplicates('user_id')
+        nm_scores_df = nm_scores_df.merge(attr_scores, on='user_id', how='left').fillna(0)
+    return nm_scores_df

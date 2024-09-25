@@ -78,33 +78,6 @@ def get_name_based_labels(filtered_count_df_train):
     return name_labels_train
 
 
-def get_X(count_df, idfs, feature_format='binary'):
-    print('Extracting {} features dataframe...'.format(feature_format))
-    assert feature_format in ['binary', 'count', 'tf', 'tf_idf']
-    if feature_format.startswith('tf'): # tf is term_frequency
-        count_df['tf'] = count_df.apply(lambda row: row['count']/row['total'], axis=1)
-    if feature_format == 'tf_idf':
-        n_users = len(count_df['user_id'].unique())
-        count_df = count_df[count_df['token'].isin(idfs.index)]
-        count_df['idf'] = count_df.apply(lambda row: np.log(n_users/idfs.loc[row['token']]['n_users']), axis=1)
-        count_df['tf_idf'] = count_df.apply(lambda row: row['tf']*row['idf'], axis=1)
-    X_train = count_df.pivot(index='user_id', columns='token', values=feature_format).fillna(0)
-    print('Done')
-    return X_train
-
-
-def get_idfs(count_df):
-    print('Getting inverse-document frequencies...')
-    idfs = count_df.groupby('token').sum('binary_count')  # Number of users that used a given token
-    idfs = idfs.rename({'binary_count': 'n_users'}, axis=1)
-    print('Done.')
-    return idfs
-
-
-def print_elapsed_time(start_time):
-    print('{} sec elapsed.'.format(round(time.time()-start_time)))
-
-
 def get_Xy_train_name(feature_df, users_with_names_df, feature_format='binary', frac=1.0, save=True):
     start_time = time.time()
 
