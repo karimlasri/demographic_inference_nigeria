@@ -8,7 +8,6 @@ from format_data import (
     filter_matrix,
     filter_test_set,
     keep_valid_ids,
-    preprocess_label_df,
     modify_gender,
 )
 from match_names import predict_attrs_from_names
@@ -64,7 +63,7 @@ def load_profiles_for_lp(matched_profiles_path, names_mapping_path, annotations_
     # Load test set
     labeled_profiles = pd.read_csv(annotations_path)
     # Preprocess test set
-    labeled_profiles = preprocess_label_df(labeled_profiles)
+    labeled_profiles = labeled_profiles.dropna()
     labeled_profiles = predict_attrs_from_names(labeled_profiles, names_mapping)
     labeled_profiles = keep_valid_ids(labeled_profiles)
 
