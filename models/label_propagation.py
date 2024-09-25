@@ -28,11 +28,18 @@ if os.path.exists()
 with open(NM_RESULTS_PATH) as eval_file:
     NM_RESULTS = json.load(eval_file)
 
-EVAL_BY_CONNECTIONS_PARAM = {
+EVAL_BY_CONNECTIONS_PARAMS = {
                 'min_connections'=0
                 'max_connections'=500
                 'bin_size'=10
             }
+
+LABEL_PROPAGATION_PARAMS = {
+    'alpha' = 0.5
+    'num_iterations' = 10
+    'keep_init' = True
+}
+
 
 # NM_RESULTS = {
 #     'ethnicity':{'cov':0.7, 'acc':0.86, 'maj':0.46494464944649444},
@@ -192,7 +199,31 @@ def plot_by_connections_threshold(accuracies, coverages, attr, eval_by_connectio
     plt.legend()
     plt.savefig(f'plots/evaluation_by_connections_{attr}.png')
     plt.show()
-    
+
+
+def perform_lp_iteration(scores_matrix, norm_adj_matrix, init_matrix, alpha, attr_test_matrix_indices, attr_classes, iteration, print_bool=True):
+    """ Perform one iteration of label propagation and evaluate on test set. """
+    predictions = get_predictions(scores_matrix, attr_test_matrix_indices, attr_classes)
+    acc, cov = evaluate(predictions, ground_truth, scores_matrix, attr_test_matrix_indices, labeled_profiles)
+    if print_bool:
+        print('Accucary at iteration {} : {}'.format(iteration, round(acc,2)))
+        print('Coverage at iteration {} : {}'.format(iteration, round(cov,2)))
+        print('Performing iteration {} of label propagation...'.format(iteration+1))
+    scores_matrix = update_scores(scores_matrix, norm_adj_matrix, init_matrix, alpha)
+    return scores_matrix, predictions
+
+
+def initialize_matrices_for_lp(nm_scores_df, attr, attr_classes, keep_init, norm_adj_matrix):
+    """ Initialize scores and adjacency matrices prior to performing label propagation for current attribute. """
+    init_df = nm_scores_df[['{}_name_predict_{}'.format(attr, attr_class) for attr_class in attr_classes]]
+    scores_matrix = pd.DataFrame(init_df).values
+    init_matrix = init_df.values
+    if keep_init:
+        # <keep_init> encodes whether initial scores for matched users should remain unchanged 
+        # (i.e. label propagation will only update other users)
+        keep_vector = np.array([1 if (row.sum() == 0) else 0 for row in scores_matrix]).reshape(-1, 1)
+        norm_adj_matrix = norm_adj_matrix.multiply(keep_vector)
+    return init_matrix, scores_matrix, norm_adj_matrix
     
 
 if __name__=='__main__':
@@ -209,10 +240,10 @@ if __name__=='__main__':
     
     args = parser.parse_args()
 
-    # Params for Label Propagation
-    alpha = 0.5
-    num_generations = 10
-    keep_init = True
+    ## Load params for Label Propagation
+    alpha = LABEL_PROPAGATION_PARAMS['alpha']
+    num_iterations = LABEL_PROPAGATION_PARAMS['num_iterations']
+    keep_init = LABEL_PROPAGATION_PARAMS['keep_init']
 
     ## Files loading
     name_matched_profiles, labeled_profiles = load_profiles_for_lp(args.name_matched_profiles, NAMES_TO_ATTRIBUTES_MAP, args.annotations_path)
@@ -228,44 +259,29 @@ if __name__=='__main__':
             os.mkdir('plots/')
         n_connections = get_n_connections(test_matrix_indices, norm_adj_matrix)
 
-    # Load name matching scores to initialize label propagation, as this is a better signal than binary predictions
+    ## Load name matching scores to initialize label propagation, as this is a better signal than binary predictions
     nm_scores_df = load_nm_scores_for_lp(target_nodes)
 
-    # Perform Label Propagation
+    ## Perform Label Propagation
     for attr, attr_classes in CLASSES.items():
         print('Performing label propagation for {}.'.format(attr))
         
-        # Initialize matrices and indices for current demographic attribute
-        init_df = nm_scores_df[['{}_name_predict_{}'.format(attr, attr_class) for attr_class in attr_classes]]
-        scores_matrix = pd.DataFrame(init_df).values
-        init_matrix = init_df.values
+        # Initialize matrices for current demographic attribute
+        init_matrix, scores_matrix, norm_adj_matrix = initialize_matrices_for_lp(nm_scores_df, attr, attr_classes, keep_init, norm_adj_matrix)
+        
+        # Get indices of test users for current attribute and their ground truth
         attr_test_matrix_indices, attr_test_profile_indices = get_test_indices_for_attr(test_matrix_indices, labeled_profiles, attr, attr_classes)
-        # Get initial evaluation prior to performing label propagation
-        predictions = get_predictions(scores_matrix, attr_test_matrix_indices, attr_classes)
         ground_truth = labeled_profiles.iloc[attr_test_profile_indices][attr]
-        acc, cov = evaluate(predictions, ground_truth, scores_matrix, attr_test_matrix_indices, labeled_profiles)
         
-        print('Initial accuracy : {}'.format(round(acc,2)))
-        print('Initial coverage : {}'.format(round(cov,2)))
-        accs = [acc]
+        # Perform label propagation
+        for iteration in range(num_iterations):
+            scores_matrix, predictions = perform_lp_iteration(scores_matrix, norm_adj_matrix, init_matrix, alpha, attr_test_matrix_indices, attr_classes, iteration)
         
-        if keep_init:
-            keep_vector = np.array([1 if (row.sum() == 0) else 0 for row in scores_matrix]).reshape(-1, 1)
-            norm_adj_matrix = norm_adj_matrix.multiply(keep_vector)
-
-        for g in range(num_generations):
-            print('Performing {}-th iteration of label propagation...'.format(g))
-            scores_matrix = update_scores(scores_matrix, norm_adj_matrix, init_matrix, alpha)
-            predictions = get_predictions(scores_matrix, attr_test_matrix_indices, attr_classes)
-            acc, cov = evaluate(predictions, ground_truth, scores_matrix, test_matrix_indices, labeled_profiles)
-            print('Accucary at iteration {} : {}'.format(g+1, round(acc,2)))
-            print('Coverage at iteration {} : {}'.format(g+1, round(cov,2)))
-            accs.append(acc)
-
-        pkl.dump(predictions, open('data/lab_prop_predictions_{}_{}_20-03-03.npz'.format(attr, alpha), 'wb'))
+        # Save results
+        pkl.dump(predictions, open('{}/lab_prop_predictions_{}_{}.npz'.format(SCORES_PATH, attr, alpha), 'wb'))
         nm_scores_df['user_id'].to_csv('lab_prop_user_ids.csv')
-        np.save('predictions/scores_matrix_{}_{}_20-03-03.npz'.format(attr, alpha), scores_matrix)
+        np.save('{}/lab_prop_scores_matrix_{}_{}.npz'.format(SCORES_PATH, attr, alpha), scores_matrix)
 
         if args.plot_by_connections:
-            accuracies, coverages = get_eval_by_connections(labeled_profiles, attr, attr_classes, test_matrix_indices, scores_matrix, EVAL_BY_CONNECTIONS_PARAM)
-            plot_by_connections_threshold(accuracies, coverages, attr, EVAL_BY_CONNECTIONS_PARAM)
+            accuracies, coverages = get_eval_by_connections(labeled_profiles, attr, attr_classes, test_matrix_indices, scores_matrix, EVAL_BY_CONNECTIONS_PARAMS)
+            plot_by_connections_threshold(accuracies, coverages, attr, EVAL_BY_CONNECTIONS_PARAMS)
