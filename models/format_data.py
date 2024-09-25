@@ -10,12 +10,22 @@ import time
 import json
 
 
-def clean_user_ids(user_profiles):
+def keep_valid_ids(user_profiles):
     """ Removes malformated user ids."""
     user_profiles['valid_id'] = user_profiles['user_id'].apply(lambda x:'+' not in x)
     user_profiles = user_profiles[user_profiles['valid_id']]
     user_profiles['user_id'] = user_profiles['user_id'].astype('int64')
     return user_profiles
+
+
+def filter_test_set(labeled_profiles, columns_to_keep):
+    """ Further clean the labeled profiles to keep only active users. """
+    if 'org' in labeled_profiles.columns.values:
+        labeled_profiles = labeled_profiles[labeled_profiles['org']=='0']
+    if 'suspended' in labeled_profiles.columns.values:
+        labeled_profiles = labeled_profiles[labeled_profiles['suspended']=='0']
+    labeled_profiles = labeled_profiles[columns_to_keep]
+    return labeled_profiles
 
 
 def modify_gender(x):

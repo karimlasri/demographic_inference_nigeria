@@ -12,7 +12,7 @@ import json
 
 NAMES_TO_ATTRIBUTES_MAP = 'data/names_attribute_map.csv'
 GENDER_SCRAPED_PATH = 'data/names_gender_proportions.csv' # TODO : Document this
-OUTPUT_PATH = 'predictions/'
+SCORES_PATH = 'predictions/'
 CLASSES = {
     'ethnicity':['yoruba', 'hausa', 'igbo'],
     'gender':['m', 'f'],
@@ -205,12 +205,12 @@ if __name__=='__main__':
     user_profiles = user_profiles.reset_index(drop=True)
     
     # Score each demographic attribute and save file
-    if not os.path.exists(OUTPUT_PATH):
-        os.mkdir(OUTPUT_PATH)
+    if not os.path.exists(SCORES_PATH):
+        os.mkdir(SCORES_PATH)
     for attr in CLASSES:
         attr_scores = score(attr, names_mapping, user_profiles, gender_df)
         attr_scores['user_id'] = user_profiles['user_id']
-        attr_scores.to_csv(f'{OUTPUT_PATH}/name_matching_scores_{attr}.csv')
+        attr_scores.to_csv(f'{SCORES_PATH}/name_matching_scores_{attr}.csv')
         
         attr_classes = CLASSES[attr]
         predictions = attr_scores[attr_classes].apply(lambda x : attr_classes[np.argmax(x.values)], axis=1)
