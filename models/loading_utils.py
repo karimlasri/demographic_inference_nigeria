@@ -31,6 +31,22 @@ def load_name_mapping(names_mapping_path='data/names_attribute_map.csv'):
     return names_mapping
 
 
+def load_names_list(names_map_path='data/names_attributes_map.csv'):
+    name_df = load_name_mapping(names_map_path=names_map_path)
+    names_list = name_df.index.tolist()
+    names_list.sort(key=len, reverse=True)
+    names_list = [name for name in names_list if len(name) > 2]
+    return names_list
+
+
+def load_name_gender_prop(gender_proportions_path='data/names_gender_proportions.csv'):
+    """ Loads a dataframe where scraped Nigerian names are assigned gender proportions in the population. """
+    gender_proportions = pd.read_csv(gender_proportions_path)
+    gender_proportions['Forename'] = gender_proportions['Forename'].str.lower()
+    gender_proportions = gender_proportions.set_index('Forename').drop('Unnamed: 0', axis=1)
+    return gender_proportions
+
+
 def load_users_with_matched_names():
     """ Loads a dataframe of users matched with their names using the name list """
     df_list = list()
@@ -111,4 +127,4 @@ def load_friendship_data():
     friendship_matrix = load_npz('data/friendship_network/adjacency_attention_links_with_outnodes.npz')
     nodes = pd.read_csv('data/friendship_network/nodes.csv').reset_index().rename(columns={'index':'user_index', '0':'user_id'})
     return friendship_matrix, nodes
-
+    

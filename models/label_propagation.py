@@ -1,8 +1,8 @@
 import pandas as pd
 from pathlib import Path
-from match_names import predict
-from loading_utils import load_labelled_df, load_name_mapping, load_user_ids, load_friendship_data
-from format_data import load_names_list, preprocess_label_df
+from match_names import predict_all_from_names
+from loading_utils import load_labelled_df, load_name_mapping, load_user_ids, load_friendship_data, load_names_list
+from format_data import preprocess_label_df, clean_user_ids
 from scipy.sparse import load_npz
 from sklearn.preprocessing import normalize
 
@@ -12,10 +12,10 @@ from sklearn.metrics import accuracy_score
 import pickle as pkl
 import numpy as np
 import matplotlib.pyplot as plt
+import json
+import argparse
 
-import sys
 
-PATH_MATCHED_USERS = 'data/all_users_with_demographics.csv'
 ANNOTATIONS_PATH = 'data/annotations_demographics.csv' 
 NAMES_TO_ATTRIBUTES_MAP = 'data/names_attribute_map.csv'
 PREDICTIONS_PATH = 'predictions/'
@@ -25,30 +25,19 @@ CLASSES = {
     'religion':('christian', 'muslim')
          }
 
-NM_RESULTS = {
-    'ethnicity':{'cov':0.7, 'acc':0.86, 'maj':0.46494464944649444},
-    'religion':{'cov':0.57, 'acc': 0.91, 'maj':0.7652284263959391},
-    'gender':{'cov':0.65, 'acc':0.83, 'maj':0.7226993865030675}
-}
+NM_RESULTS_PATH = 'data/name_matching_eval.json'
+if os.path.exists()
+with open(NM_RESULTS_PATH) as eval_file:
+    NM_RESULTS = json.load(eval_file)
+
+# NM_RESULTS = {
+#     'ethnicity':{'cov':0.7, 'acc':0.86, 'maj':0.46494464944649444},
+#     'religion':{'cov':0.57, 'acc': 0.91, 'maj':0.7652284263959391},
+#     'gender':{'cov':0.65, 'acc':0.83, 'maj':0.7226993865030675}
+# }
 # The following are paths to the friendship network data
 # ADJ_MATRIX_PATH = '../data/friendship_network/adjacency_attention_links_with_outnodes.npz'
 # ADJ_NODES_PATH = '../data/friendship_network/nodes.csv'
-
-def load_users_with_matched_names(force_load=False):
-    """ Loads a dataframe of users matched with their names using the name list """
-    df_list = list()
-    for path in Path(PATH_MATCHED_USERS).glob('*.parquet'):
-        df = pd.read_parquet(path)
-        df_list.append(df)
-    users_with_names_df = pd.concat(df_list)
-    return users_with_names_df
-    
-
-def predict_from_names_label_df(labeled_profiles, names_mapping):
-    labeled_profiles['ethnicity_name_predict'] = predict('ethnicity', names_mapping, labeled_profiles)
-    labeled_profiles['gender_name_predict'] = predict('gender', names_mapping, labeled_profiles)
-    labeled_profiles['religion_name_predict'] = predict('religion', names_mapping, labeled_profiles)
-    return labeled_profiles
 
 
 def load_friendship_data(matrix_path, nodes_path):
@@ -58,9 +47,28 @@ def load_friendship_data(matrix_path, nodes_path):
 
 
 def filter_matrix(matrix, nodes, user_ids):
-    subset = nodes[nodes['user_id'].isin(user_ids)]
-    return matrix[subset['user_index']][:, subset['user_index']], subset
+    target_nodes = nodes[nodes['user_id'].isin(user_ids)]
+    target_nodes = target_nodes.reset_index(drop=True)
+    return matrix[target_nodes['user_index']][:, target_nodes['user_index']], target_nodes
 
+
+def update_scores(scores_matrix, norm_adj_matrix, init_matrix, alpha=0.5):
+    """ Update the scores matrix using the label propagation formula. """
+    scores_matrix = alpha * csr_matrix.dot(norm_adj_matrix, scores_matrix) + (1-alpha)*init_matrix
+    return scores_matrix
+
+
+def get_predictions(scores_matrix, test_score_idx, attr_classes):
+    """ Get predictions for the current attribute using the scores matrix. """
+    predictions = [attr_classes[p] for p in scores_matrix[test_score_idx, :].argmax(axis=1)]
+    return predictions
+
+
+def evaluate(predictions, ground_truth, scores_matrix, indices_test, labeled_profiles):
+    acc = accuracy_score(predictions, ground_truth)
+    cov = len([idx for idx in indices_test if idx is not None and scores_matrix[idx].sum() > 0])/labeled_profiles.shape[0]
+    return acc, cov
+    
 
 def get_n_friends(indices, matrix):
     n_friends = []
@@ -73,156 +81,141 @@ def get_n_friends(indices, matrix):
 
 
 if __name__=='__main__':
-    path_to_friendship_data = sys.argv[1]
-    adj_matrix_path = path_to_friendship_data + 'adjacency_matrix.npz'
-    adj_nodes_path = path_to_friendship_data + 'nodes.csv'
+    parser = argparse.ArgumentParser(
+        description="Perform label propagation posterior to matching names of twitter users to infer demographic attributes for users that could not be matched using their names."
+    )
+
+    parser.add_argument("--name_matched_profiles", type=str, help="Path to the user profiles with name matching scores, i.e. the output of the name matching script.")
+    parser.add_argument("--friendship_data", type=str, help="Path to the friendship data.")
+    # parser.add_argument("--out_path", type=str, help="Path where user profiles with their name-based scores for each attribute will be saved.")
+    parser.add_argument("--annotations_path", type=str, help="Path to labeled profiles.", default=None)
+    parser.add_argument("--symmetrize", type=bool, help="Whether the followership matrix should be made symmetric or not", default=True)
+    # parser.add_argument("--evaluate", type=str, help="Whether or not to evaluate name matching on a labeled test set.", default=False)
     
+    args = parser.parse_args()
+
+    ## Files loading
     # Load users with matched names
-    users_with_names_df = pd.read_csv(PATH_MATCHED_USERS)
-    # Load test set
-    labeled_profiles = pd.read_csv(TEST_USERS_PATH)
-    # Load mapping from names to demographic attributes
+    name_matched_profiles = pd.read_csv(args.name_matched_profiles)
+    # Load mapping from names to demographic attributes and name list
     names_mapping = load_name_mapping(NAMES_TO_ATTRIBUTES_MAP)
-
-    # Get list of names
     name_list = load_names_list(NAMES_TO_ATTRIBUTES_MAP)
-    
-    # Preprocess test set
-    labeled_profiles = preprocess_label_df(labeled_profiles)
-    labeled_profiles = predict_from_names_label_df(labeled_profiles, names_mapping)
-    labeled_profiles['valid_id'] = labeled_profiles['user_id'].apply(lambda x:'+' not in x)
-    labeled_profiles = labeled_profiles[labeled_profiles['valid_id']]
-    labeled_profiles['user_id'] = labeled_profiles['user_id'].astype('int64')
-    labeled_profiles = labeled_profiles[['user_id', 'ethnicity_name_predict', 'gender_name_predict', 'religion_name_predict']]
 
-    # Get all users with names
-    all_users_with_name = pd.concat([users_with_names_df, labeled_profiles])
-    all_users_with_name['user_id'] = all_users_with_name['user_id'].astype('int64')
-    all_users_with_name = all_users_with_name.drop_duplicates('user_id')
-    print('all_users', all_users_with_name.shape)
-    
-    matched_names_users = all_users_with_name['user_id'].values
-    print('matched', matched_names_users.shape)
-    
-    # Load adjacency matrix
-    friendship, nodes = load_friendship_data(adj_matrix_path, adj_nodes_path)
-    user_ids = all_users_with_name['user_id']
-    user_ids = user_ids.reset_index(drop=True)
-    
-    filtered_friendship, subset = filter_matrix(friendship, nodes, user_ids)
-    subset = subset.reset_index(drop=True)
-    print('subset', subset.shape)
-    
-    subset_index_to_id = {row['user_id']:i for i, row in subset.iterrows()}
-    
-    # Get user ids positions from nodes list
-    labels_test = pd.read_csv(ANNOTATIONS_PATH).drop(['name', 'screen_name', 'link'], axis=1) 
-    labels_test = labels_test[labels_test['org']=='0']
-    labels_test = labels_test[labels_test['suspended']=='0']
+    ## Concatenate the labeled test set with matched names from the user set as those can also be used for label propagation
+    if args.annotations_path is not None:
+        # Load test set
+        labeled_profiles = pd.read_csv(ANNOTATIONS_PATH)
+        # Preprocess test set
+        labeled_profiles = preprocess_label_df(labeled_profiles)
+        labeled_profiles = predict_attrs_from_names(labeled_profiles, names_mapping)
+        labeled_profiles = clean_user_ids(labeled_profiles)
 
-    valid_id = labels_test['user_id'].apply(lambda x:'+' not in x) # Removing malformatted ids
-    labels_test = labels_test[valid_id]
-    labels_test['user_id'] = labels_test['user_id'].astype('int64')
-    labels_test['ethnicity'] = labels_test['ethnicity'].str.lower()
+        # Get all users with names
+        columns_to_keep = ['user_id', 'ethnicity_name_predict', 'gender_name_predict', 'religion_name_predict']
+        name_matched_profiles = pd.concat([name_matched_profiles[columns_to_keep], labeled_profiles[columns_to_keep]])
+    
+    name_matched_profiles['user_id'] = name_matched_profiles['user_id'].astype('int64')
+    name_matched_profiles = name_matched_profiles.drop_duplicates('user_id')    
+    name_matched_profiles = name_matched_profiles.set_index('user_id')
+    print('all_users', name_matched_profiles.shape)
+    
+    ## Load followership data
+    adj_matrix_path = args.path_to_friendship_data + 'adjacency_matrix.npz'
+    adj_nodes_path = args.path_to_friendship_data + 'nodes.csv'
+    adj_matrix, nodes = load_friendship_data(adj_matrix_path, adj_nodes_path)
+    
+    user_ids = name_matched_profiles['user_id'].reset_index(drop=True)
+    target_adj_matrix, target_nodes = filter_matrix(adj_matrix, nodes, user_ids)
+
+    # Normalize adjacency matrix
+    if args.symmetrize:
+        target_adj_matrix = target_adj_matrix.transpose() + target_adj_matrix
+    norm_adj_matrix = normalize(target_adj_matrix.astype('float64'), norm='l1', axis=1)
+        
+    print('norm_adj_matrix', norm_adj_matrix.shape)
+    print('target_nodes', target_nodes.shape)
+
+    ## Get user ids positions from nodes list
+    # Inverse index to user ids
+    target_nodes_index_to_id = {row['user_id']:i for i, row in target_nodes.iterrows()}
+    
+    # Further clean the labeled profiles
+    labeled_profiles = labeled_profiles.drop(['name', 'screen_name', 'link'], axis=1)
+    if 'org' in labeled_profiles.columns.values:
+        labeled_profiles = labeled_profiles[labeled_profiles['org']=='0']
+    if 'suspended' in labeled_profiles.columns.values:
+        labeled_profiles = labeled_profiles[labeled_profiles['suspended']=='0']
     
     indices_test = []
-    for user_id in labels_test['user_id']:
-        idx = subset_index_to_id.get(int(user_id), None)
+    for user_id in labeled_profiles['user_id']:
+        idx = target_nodes_index_to_id.get(int(user_id), None)
         indices_test.append(idx)
-        
-#     all_users_with_name2 = all_users_with_name.set_index('user_id')
-#     all_users_with_name2.index = all_users_with_name2.index.astype('int64')
-#     print('all_users2', all_users_with_name2.shape)
-    all_users_with_name = all_users_with_name.set_index('user_id')
-    all_users_with_name.index = all_users_with_name.index.astype('int64')
-    print('all_users', all_users_with_name.shape)
-    
-    # Get friendship matrix
-    symmetric = True
+    n_friends = get_n_friends(indices_test, norm_adj_matrix)
 
-    if symmetric:
-        symmetric_friendship = filtered_friendship.transpose() + filtered_friendship
-        n_friends = get_n_friends(indices_test, symmetric_friendship)
-        norm_filtered_friendship = normalize(symmetric_friendship.astype('float64'), norm='l1', axis=1)
-
-    else:
-        n_friends = get_n_friends(indices_test, filtered_friendship)
-        norm_filtered_friendship = normalize(filtered_friendship.astype('float64'), norm='l1', axis=1)
-    
-    print('norm_friendship', norm_filtered_friendship.shape)
-    
-    df = pd.DataFrame(subset['user_id'])
-    for feature in ('ethnicity', 'religion', 'gender'):
-        feature_df = pd.read_csv(f'{PREDICTIONS_PATH}/name_matching_scores_{feature}.csv').drop('Unnamed: 0', axis=1)
-        feature_df = feature_df.rename({k:'{}_name_predict_{}'.format(feature, k) for k in feature_df.columns if k!='user_id'}, axis=1).drop_duplicates('user_id')
-        df = df.merge(feature_df, on='user_id', how='left').fillna(0)
+    # Load name matching scores to initialize label propagation, as this is a better signal than 
+    nm_scores_df = pd.DataFrame(target_nodes['user_id'])
+    for attr in ('ethnicity', 'religion', 'gender'):
+        attr_scores = pd.read_csv(f'{PREDICTIONS_PATH}/name_matching_scores_{feature}.csv').drop('Unnamed: 0', axis=1)
+        attr_scores = attr_scores.rename({k:'{}_name_predict_{}'.format(feature, k) for k in attr_scores.columns if k!='user_id'}, axis=1).drop_duplicates('user_id')
+        nm_scores_df = nm_scores_df.merge(attr_scores, on='user_id', how='left').fillna(0)
         
-    print('df', df.shape)
+    print('nm_scores_df', nm_scores_df.shape)
         
-   # Perform Label Propagation
+    # Perform Label Propagation
     alpha = 0.5
-    num_generations = 5
+    num_generations = 10
     keep_init = True
 
-    for label in ('ethnicity', 'gender', 'religion'):
-        all_labels = users_with_names_df['{}_name_predict'.format(label)].unique()
-        binary_df = pd.get_dummies(all_users_with_name.loc[subset['user_id']].drop(['{}_name_predict'.format(l) for l in CLASSES if l != label], axis=1).replace(['cameroon','unisex','christian/muslim', 'muslim/christian'], 'None'), columns=['{}_name_predict'.format(label)])
-        print('binary', binary_df.shape)
-    #     none_df = binary_df['{}_name_predict_None'.format(label)]
-    #     init_df = binary_df[['{}_name_predict_{}'.format(label, e) for e in labels[label]]]
-        init_df = df[['{}_name_predict_{}'.format(label, e) for e in CLASSES[label]]]
+    for attr in ('ethnicity', 'gender', 'religion'):
+        print('Performing label propagation for {}.'.format(attr))
+        
+        attr_classes = CLASSES[attr]
+        init_df = nm_scores_df[['{}_name_predict_{}'.format(attr, e) for e in attr_classes]]
         print('init_df', init_df.shape)
-        scores_df = pd.DataFrame(init_df)
-        scores_matrix = scores_df.values
+        scores_matrix = pd.DataFrame(init_df).values
         print('scores_matrix', scores_matrix.shape)
         init_matrix = init_df.values
-        idx_filter_matrix = [idx for i, idx in enumerate(indices_test) if idx is not None and labels_test.iloc[i][label] in CLASSES[label]]
-        idx_filter_labels = [i for i, idx in enumerate(indices_test) if idx is not None and labels_test.iloc[i][label] in CLASSES[label]]
+        test_score_idx = [idx for i, idx in enumerate(indices_test) if idx is not None and labeled_profiles.iloc[i][attr] in attr_classes]
+        idx_filter_labels = [i for i, idx in enumerate(indices_test) if idx is not None and labeled_profiles.iloc[i][attr] in attr_classes]
         print(len(idx_filter_labels))
-        predictions = [CLASSES[label][p] for p in scores_matrix[idx_filter_matrix, :].argmax(axis=1)]
-        acc = accuracy_score(predictions, labels_test.iloc[idx_filter_labels][label])
-        print('Performing label propagation for {}.'.format(label))
+        
+        predictions = get_predictions(scores_matrix, test_score_idx, attr_classes)
+        ground_truth = labeled_profiles.iloc[idx_filter_labels][attr]
+        acc, cov = evaluate(predictions, ground_truth, scores_matrix, indices_test, labeled_profiles)
+        
         print('Initial accuracy : {}'.format(round(acc,2)))
-        cov = len([idx for idx in indices_test if idx is not None and scores_matrix[idx].sum() > 0])/labels_test.shape[0]
         print('Initial coverage : {}'.format(round(cov,2)))
         accs = [acc]
 
-        print('norm_friendship', norm_filtered_friendship.shape)
+        print('norm_adj_matrix', norm_adj_matrix.shape)
         start_time = time.time()
         if keep_init:
             keep_vector = np.array([1 if (row.sum() == 0) else 0 for row in scores_matrix]).reshape(-1, 1)
             print('keep_vector', keep_vector.shape)
-            norm_adj_matrix = norm_filtered_friendship.multiply(keep_vector)
-        else:
-            norm_adj_matrix = norm_filtered_friendship
-        for g in range(num_generations):
-    #         print('Generation {}'.format(g))
-            scores = []
-            scores_matrix = alpha * csr_matrix.dot(norm_adj_matrix, scores_matrix) + (1-alpha)*init_matrix
+            norm_adj_matrix = norm_adj_matrix.multiply(keep_vector)
 
-    #         print('{} sec elapsed'.format(time.time()-start_time))
-            predictions = [CLASSES[label][p] for p in scores_matrix[idx_filter_matrix, :].argmax(axis=1)]
-            acc = accuracy_score(predictions, labels_test.iloc[idx_filter_labels][label])
-            cov = len([idx for idx in indices_test if idx is not None and scores_matrix[idx].sum() > 0])/labels_test.shape[0]
+        for g in range(num_generations):
+    #         print('Iteration {}'.format(g))
+            scores_matrix = update_scores(scores_matrix, norm_adj_matrix, init_matrix, alpha)
+            predictions = get_predictions(scores_matrix, test_score_idx, attr_classes)
+            acc, cov = evaluate(predictions, ground_truth, scores_matrix, indices_test, labeled_profiles)
             print('Acc. at generation {} : {}'.format(g+1, round(acc,2)))
             print('Cov. at generation {} : {}'.format(g+1, round(cov,2)))
             accs.append(acc)
+    #         print('{} sec elapsed'.format(time.time()-start_time))
 
-        pkl.dump(predictions, open('../data/lab_prop_predictions_{}_{}_20-03-03.npz'.format(label, alpha), 'wb'))
-    #     scores_df.index.to_frame().to_csv('lab_prop_user_ids_{}.csv'.format(label))
-        df['user_id'].to_csv('lab_prop_user_ids.csv')
-        np.save('../predictions/scores_matrix_{}_{}_20-03-03.npz'.format(label, alpha), scores_matrix)
-    #     pkl.dump(accs, open('data/accuracies_label_propagation_{}_{}.pkl'.format(label, alpha), 'wb'))
+        pkl.dump(predictions, open('../data/lab_prop_predictions_{}_{}_20-03-03.npz'.format(attr, alpha), 'wb'))
+        nm_scores_df['user_id'].to_csv('lab_prop_user_ids.csv')
+        np.save('../predictions/scores_matrix_{}_{}_20-03-03.npz'.format(attr, alpha), scores_matrix)
 
         results = {}
         accs_thres = []
         coverages = []
         for min_friends in np.arange(0, 500, 10):
-            predictions = [CLASSES[label][p] for p in scores_matrix[[idx for i, idx in enumerate(indices_test) if idx is not None and n_friends[i]<=min_friends+10 and labels_test.iloc[i][label] in CLASSES[label]], :].argmax(axis=1)]
-            acc = accuracy_score(predictions, labels_test.iloc[[i for i,idx in enumerate(indices_test) if idx is not None and n_friends[i]<=min_friends+10 and labels_test.iloc[i][label] in CLASSES[label]]][label])
+            predictions = [attr_classes[p] for p in scores_matrix[[idx for i, idx in enumerate(indices_test) if idx is not None and n_friends[i]<=min_friends+10 and labeled_profiles.iloc[i][attr] in attr_classes], :].argmax(axis=1)]
+            acc = accuracy_score(predictions, labeled_profiles.iloc[[i for i,idx in enumerate(indices_test) if idx is not None and n_friends[i]<=min_friends+10 and labeled_profiles.iloc[i][attr] in attr_classes]][attr])
             accs_thres.append(acc)
-    #         coverage = len([f for i, f in enumerate(n_friends) if f>=min_friends and labels_test.iloc[i][label] in labels[label]])/labels_test.shape[0]
-            coverage = len([f for i, f in enumerate(n_friends) if f>=min_friends and labels_test.iloc[i][label] in CLASSES[label]])/labels_test[labels_test[label].isin(CLASSES[label])].shape[0]
+            coverage = len([f for i, f in enumerate(n_friends) if f>=min_friends and labeled_profiles.iloc[i][attr] in attr_classes])/labeled_profiles[labeled_profiles[attr].isin(attr_classes)].shape[0]
 
             coverages.append(coverage)
         print(coverages[0])
@@ -231,19 +224,19 @@ if __name__=='__main__':
         results['threshold'] = np.arange(0, 500, 10)
         results['accuracy'] = accs_thres
         results['cdf'] = [1-c for c in coverages]
-        results['majority_baseline'] = NM_RESULTS[label]['maj']
-        results['name_matching_cov'] = NM_RESULTS[label]['cov']
-        results['name_matching_acc'] = NM_RESULTS[label]['acc']
-        pkl.dump(results, open('results_{}.pkl'.format(label), 'wb'))
+        results['majority_baseline'] = NM_RESULTS[attr]['maj']
+        results['name_matching_cov'] = NM_RESULTS[attr]['cov']
+        results['name_matching_acc'] = NM_RESULTS[attr]['acc']
+        pkl.dump(results, open('results_{}.pkl'.format(attr), 'wb'))
         ax.plot(np.arange(0, 500, 10), accs_thres, color='orange', marker='o')
-        ax.set_ylabel('Accuracy on {}'.format(label), color='orange')
+        ax.set_ylabel('Accuracy on {}'.format(attr), color='orange')
         ax.set_xlabel('Threshold on min # friends')
         ax.set_ylim(0,1)
         ax2 = ax.twinx()
         ax2.plot(np.arange(0, 500, 10), [1-c for c in coverages], color='blue', marker='o')
-        ax2.axhline(y=NM_RESULTS[label]['acc'], color='orange', linestyle='--', label='Name Matching Accuracy')
-        ax2.axhline(y=NM_RESULTS[label]['cov'], color='blue', linestyle='--', label='Name Matching Coverage')
-        ax2.axhline(y=NM_RESULTS[label]['maj'], color='black', linestyle='--', label='Majority Baseline')
+        ax2.axhline(y=NM_RESULTS[attr]['acc'], color='orange', linestyle='--', label='Name Matching Accuracy')
+        ax2.axhline(y=NM_RESULTS[attr]['cov'], color='blue', linestyle='--', label='Name Matching Coverage')
+        ax2.axhline(y=NM_RESULTS[attr]['maj'], color='black', linestyle='--', label='Majority Baseline')
         ax2.set_ylabel('Cumulative distribution function kept users', color='blue')
         ax2.set_ylim(0,1)
         plt.legend()

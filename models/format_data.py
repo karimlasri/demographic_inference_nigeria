@@ -1,6 +1,6 @@
 import re
 from loading_utils import *
-from match_names import predict, match_names
+from match_names import match_names, predict_attrs_from_name
 from sklearn.model_selection import train_test_split
 import pandas as pd
 from scipy.sparse import coo_array, load_npz, save_npz
@@ -10,26 +10,19 @@ import time
 import json
 
 
+def clean_user_ids(user_profiles):
+    """ Removes malformated user ids."""
+    user_profiles['valid_id'] = user_profiles['user_id'].apply(lambda x:'+' not in x)
+    user_profiles = user_profiles[user_profiles['valid_id']]
+    user_profiles['user_id'] = user_profiles['user_id'].astype('int64')
+    return user_profiles
+
+
 def modify_gender(x):
     """ We keep only the gender's first letter to represent the class. """
     if x:
         if x!='unisex':
             return x[0]
-
-
-def load_names_list(names_map_path='data/names_attributes_map.csv'):
-    name_df = load_name_mapping(names_map_path=names_map_path)
-    names_list = name_df.index.tolist()
-    names_list.sort(key=len, reverse=True)
-    names_list = [name for name in names_list if len(name) > 2]
-    return names_list
-    
-
-def predict_from_names_label_df(label_df, name_df):
-    label_df['ethnicity_name_predict'] = predict('ethnicity', name_df, label_df)
-    label_df['gender_name_predict'] = predict('gender', name_df, label_df)
-    label_df['religion_name_predict'] = predict('religion', name_df, label_df)
-    return label_df
 
 
 def preprocess_users_matched_names_df(users_with_names_df):
@@ -293,7 +286,7 @@ if __name__=='__main__':
     name_df = preprocess_name_df(name_df)
     names_list = load_names_list()
     label_df = match_names(label_df, names_list)
-    label_df = predict_from_names_label_df(label_df, name_df)
+    label_df = predict_attrs_from_name(label_df, name_df)
     if train_on_matched:
         X_train, y_train, X_test, y_test = load_Xy_on_name_matched(label_df, frac=0.1)
     else:
