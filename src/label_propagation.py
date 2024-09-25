@@ -24,9 +24,10 @@ CLASSES = {
          }
 
 NM_RESULTS_PATH = 'data/name_matching_eval.json'
-if os.path.exists()
-with open(NM_RESULTS_PATH) as eval_file:
-    NM_RESULTS = json.load(eval_file)
+if os.path.exists(NM_RESULTS_PATH):
+    with open(NM_RESULTS_PATH) as eval_file:
+        NM_RESULTS = json.load(eval_file)
+        
 
 EVAL_BY_CONNECTIONS_PARAMS = {
                 'min_connections'=0
@@ -39,13 +40,6 @@ LABEL_PROPAGATION_PARAMS = {
     'num_iterations' = 10
     'keep_init' = True
 }
-
-
-# NM_RESULTS = {
-#     'ethnicity':{'cov':0.7, 'acc':0.86, 'maj':0.46494464944649444},
-#     'religion':{'cov':0.57, 'acc': 0.91, 'maj':0.7652284263959391},
-#     'gender':{'cov':0.65, 'acc':0.83, 'maj':0.7226993865030675}
-# }
 
 
 def load_friendship_data(matrix_path, nodes_path):
@@ -261,6 +255,8 @@ if __name__=='__main__':
 
     ## Load name matching scores to initialize label propagation, as this is a better signal than binary predictions
     nm_scores_df = load_nm_scores_for_lp(target_nodes)
+    # Saving user ids for further processing of results
+    nm_scores_df['user_id'].to_csv('{}/lab_prop_user_ids.csv'.format(SCORES_PATH))
 
     ## Perform Label Propagation
     for attr, attr_classes in CLASSES.items():
@@ -279,9 +275,9 @@ if __name__=='__main__':
         
         # Save results
         pkl.dump(predictions, open('{}/lab_prop_predictions_{}_{}.npz'.format(SCORES_PATH, attr, alpha), 'wb'))
-        nm_scores_df['user_id'].to_csv('lab_prop_user_ids.csv')
         np.save('{}/lab_prop_scores_matrix_{}_{}.npz'.format(SCORES_PATH, attr, alpha), scores_matrix)
 
         if args.plot_by_connections:
             accuracies, coverages = get_eval_by_connections(labeled_profiles, attr, attr_classes, test_matrix_indices, scores_matrix, EVAL_BY_CONNECTIONS_PARAMS)
             plot_by_connections_threshold(accuracies, coverages, attr, EVAL_BY_CONNECTIONS_PARAMS)
+
