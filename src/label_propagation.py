@@ -4,7 +4,8 @@ from loading_utils import (
      load_user_ids, 
      load_profiles_for_lp, 
      load_followership_for_lp, 
-     load_nm_scores_for_lp
+     load_nm_scores_for_lp,
+     load_nm_results
      )
 from format_data import preprocess_label_df, keep_valid_ids, filter_test_set
 from scipy.sparse import csr_matrix
@@ -14,34 +15,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 import argparse
-
-
-NAMES_TO_ATTRIBUTES_MAP = 'data/names_attribute_map.csv'
-SCORES_PATH = 'predictions/'
-CLASSES = {
-    'ethnicity':('hausa', 'igbo', 'yoruba'),
-    'gender':('m','f'),
-    'religion':('christian', 'muslim')
-         }
-
-
-NM_RESULTS_PATH = 'data/name_matching_eval.json'
-if os.path.exists(NM_RESULTS_PATH):
-    with open(NM_RESULTS_PATH) as eval_file:
-        NM_RESULTS = json.load(eval_file)
-
-
-EVAL_BY_CONNECTIONS_PARAMS = {
-                'min_connections'=0
-                'max_connections'=500
-                'bin_size'=10
-            }
-
-LABEL_PROPAGATION_PARAMS = {
-    'alpha' = 0.5
-    'num_iterations' = 10
-    'keep_init' = True
-}
+from config import (
+     NAMES_TO_ATTRIBUTES_MAP, 
+     SCORES_PATH, 
+     CLASSES, 
+     EVAL_BY_CONNECTIONS_PARAMS, 
+     LABEL_PROPAGATION_PARAMS
+)
 
 
 def filter_matrix(matrix, nodes, user_ids):
@@ -128,9 +108,11 @@ def plot_by_connections_threshold(accuracies, coverages, attr, eval_by_connectio
     ax.set_ylim(0,1)
     ax2 = ax.twinx()
     ax2.plot(np.arange(min_connections, max_connections, bin_size), [1-c for c in coverages], color='blue', marker='o')
-    ax2.axhline(y=NM_RESULTS[attr]['acc'], color='orange', linestyle='--', label='Name Matching Accuracy')
-    ax2.axhline(y=NM_RESULTS[attr]['cov'], color='blue', linestyle='--', label='Name Matching Coverage')
-    ax2.axhline(y=NM_RESULTS[attr]['maj'], color='black', linestyle='--', label='Majority Baseline')
+    nm_results = load_nm_results()
+    if nm_results:
+        ax2.axhline(y=nm_results[attr]['acc'], color='orange', linestyle='--', label='Name Matching Accuracy')
+        ax2.axhline(y=nm_results[attr]['cov'], color='blue', linestyle='--', label='Name Matching Coverage')
+        ax2.axhline(y=nm_results[attr]['maj'], color='black', linestyle='--', label='Majority Baseline')
     ax2.set_ylabel('Cumulative distribution function kept users', color='blue')
     ax2.set_ylim(0,1)
     plt.legend()

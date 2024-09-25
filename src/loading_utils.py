@@ -4,14 +4,7 @@ from pathlib import Path
 import pickle as pkl
 from scipy.sparse import load_npz
 from sklearn.preprocessing import normalize
-
-
-SCORES_PATH = 'predictions/'
-CLASSES = {
-    'ethnicity':('hausa', 'igbo', 'yoruba'),
-    'gender':('m','f'),
-    'religion':('christian', 'muslim')
-         }
+from config import SCORES_PATH, CLASSES, NM_RESULTS_PATH
 
 
 def load_name_mapping(names_mapping_path='data/names_attribute_map.csv'):
@@ -25,6 +18,7 @@ def load_name_mapping(names_mapping_path='data/names_attribute_map.csv'):
 
 
 def load_names_list(names_map_path='data/names_attributes_map.csv'):
+    """ Loads the list of names found in the mapping from names to attributes. """
     name_df = load_name_mapping(names_map_path=names_map_path)
     names_list = name_df.index.tolist()
     names_list.sort(key=len, reverse=True)
@@ -98,3 +92,10 @@ def load_nm_scores_for_lp(target_nodes):
         attr_scores = attr_scores.rename({k:'{}_name_predict_{}'.format(feature, k) for k in attr_scores.columns if k!='user_id'}, axis=1).drop_duplicates('user_id')
         nm_scores_df = nm_scores_df.merge(attr_scores, on='user_id', how='left').fillna(0)
     return nm_scores_df
+
+def load_nm_results():
+    if os.path.exists(NM_RESULTS_PATH):
+        with open(NM_RESULTS_PATH) as eval_file:
+            NM_RESULTS = json.load(eval_file)
+    else:
+        print("Error : could not find name matching evaluation file at location {}.".format(NM_RESULTS_PATH))

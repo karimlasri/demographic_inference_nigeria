@@ -8,16 +8,13 @@ import argparse
 from format_data import modify_gender
 from loading_utils import load_name_mapping, load_name_gender_prop
 import json
-
-
-NAMES_TO_ATTRIBUTES_MAP = 'data/names_attribute_map.csv'
-GENDER_SCRAPED_PATH = 'data/names_gender_proportions.csv' # TODO : Document this
-SCORES_PATH = 'predictions/'
-CLASSES = {
-    'ethnicity':['yoruba', 'hausa', 'igbo'],
-    'gender':['m', 'f'],
-    'religion':['christian', 'muslim']
-         }
+from config import (
+     NAMES_TO_ATTRIBUTES_MAP, 
+     GENDER_SCRAPED_PATH, 
+     SCORES_PATH, 
+     CLASSES,
+     NM_RESULTS_PATH
+)
 
 
 def match_name(user_name, names_list):
@@ -242,5 +239,5 @@ if __name__=='__main__':
         name_matching_eval = evaluate(labeled_profiles)
         
         # Save the evaluation scores
-        with open('data/name_matching_eval.json', 'w') as eval_file:
+        with open(NM_RESULTS_PATH, 'w') as eval_file:
             json.dump(name_matching_eval, eval_file)
