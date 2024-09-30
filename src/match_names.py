@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from unidecode import unidecode
 from sklearn.metrics import accuracy_score
-from loading_utils import load_name_mapping, load_name_gender_prop
+#from loading_utils import load_name_mapping, load_name_gender_prop
 from config import (
     NAMES_TO_ATTRIBUTES_MAP,
     GENDER_SCRAPED_PATH,
@@ -14,6 +14,38 @@ from config import (
     CLASSES,
     NM_RESULTS_PATH,
 )
+
+
+import pandas as pd
+import os
+from scipy.sparse import load_npz
+from sklearn.preprocessing import normalize
+#from config import SCORES_PATH, CLASSES, NM_RESULTS_PATH
+import json
+from format_data import (
+    filter_matrix,
+    filter_test_set,
+    keep_valid_ids,
+    modify_gender,
+)
+
+def load_name_mapping(names_mapping_path="data/names_attribute_map.csv"):
+    """Loads the dataframe which includes names labelled with their ethnicity, gender and religion.
+    This dataframe has 2813 rows so far."""
+    names_mapping = pd.read_csv(names_mapping_path)
+    names_mapping["gender"] = names_mapping["gender"].apply(modify_gender)
+    names_mapping = names_mapping.drop_duplicates(subset=["name"])
+    names_mapping = names_mapping.set_index(["name"])
+    return names_mapping
+
+def load_name_gender_prop(gender_proportions_path="data/names_gender_proportions.csv"):
+    """Loads a dataframe where scraped Nigerian names are assigned gender proportions in the population."""
+    gender_proportions = pd.read_csv(gender_proportions_path)
+    gender_proportions["Forename"] = gender_proportions["Forename"].str.lower()
+    gender_proportions = gender_proportions.set_index("Forename").drop(
+        "Unnamed: 0", axis=1
+    )
+    return gender_proportions
 
 
 def match_name(user_name, names_list):
@@ -40,7 +72,7 @@ def match_names(user_profiles, names_list):
 def predict_for_attr(attr, names_mapping, user_profiles):
     """Predict a demographic attribute for given users based on their matched name and screen name, and the name mapping to that attribute"""
     predictions = []
-    for _, row in user_profiles.itterrows():
+    for _, row in user_profiles.iterrows():
         matched_names = row["matched_name"] + row["matched_screen_name"]
         matched_names = [name.lower() for name in list(dict.fromkeys(matched_names))]
         if len(matched_names) > 0:
@@ -120,17 +152,51 @@ def score_for_name(name, names_mapping, attr, gender_proportions):
                 scores[y] = 1
     return scores
 
+def score(attr, names_mapping, df, gender_proportions):
+    """Compute name matching scores for all target classes of a given demographic attribute (e.g. ethnicity), and for
+    all observations of a given df"""
+    scores = {c: [] for c in CLASSES[attr]}
+    for i in range(df.shape[0]):
+        x = df["matched_name"].iloc[i] + df["matched_screen_name"].iloc[i]
+        x = list(set(x))  # We keep only one instance of each name
+        # Compute a score vector for each name (e.g. if not ambiguous, 1 for target label, if ambiguous such as
+        # muslim/christian, 0.5 for each), results in a vector list
+        # Example : if 'Anu' is 'Yoruba' and 'Ife' is 'Yoruba/Igbo', returns [(0,1,0), (0,0.5,0.5)]
+        all_scores = [
+            score_for_name(unidecode(n.lower()), names_mapping, attr, gender_proportions)
+            for n in x
+        ]
+        # Here we compute the sum of lengths for names
+        sumlen = max(sum([len(n) for n in x]), 1)
+        # Weights for each name are its length
+        weights = [len(n) / sumlen for n in x]
+        # The merged vector is the mean of obtained vectors in "all_scores" variable, weighted by each name's length.
+        # Example : with 'Abba' and 'Aashif', sumlen=10, and weights=[4/10, 6/10] (the longer a name, the more reliable it is)
+        merged = merge_scores(all_scores, weights, attr)
+        for c in scores:
+            scores[c].append(merged[c])
+    return pd.DataFrame(scores)
+
 
 def merge_scores(all_scores, weights, attr):
     """Merges all scores that were obtained from matched names by weighting scores based on the name lengths."""
     merged_scores = {c: 0 for c in CLASSES[attr]}
     for i, scores in enumerate(all_scores):
         for c in merged_scores:
-            merged_scores[attr] += all_scores[i][c] * weights[i]
+            merged_scores[c] += all_scores[i][c] * weights[i]
     return merged_scores
 
 
-def score(attr, names_mapping, df, gender_proportions):
+def mergdfvdfvde_scores(all_scores, weights, attr):
+    """Merges all scores that were obtained from matched names by weighting scores based on the name lengths."""
+    merged_scores = {c: 0 for c in CLASSES[attr]}
+    for i, scores in enumerate(all_scores):
+        for c in merged_scores:
+            merged_scores[c] += all_scores[i][c] * weights[i]
+    return merged_scores
+
+
+def scvfdvsdfvdsore(attr, names_mapping, df, gender_proportions):
     """Compute name matching scores for all target classes of a given demographic attribute (e.g. ethnicity), and for
     all observations of a given df"""
     scores = {c: [] for c in CLASSES[attr]}
@@ -154,14 +220,7 @@ def score(attr, names_mapping, df, gender_proportions):
         # Weights for each name are its length
         weights = [len(n) / sumlen for n in x]
 
-        # The merged vector is the mean of obtained vectors in "all_scores" variable, weighted by each name's length.
-        # Example : with 'Abba' and 'Aashif', sumlen=10, and weights=[4/10, 6/10] (the longer a name, the more reliable it is)
-        merged = merge_scores(all_scores, weights, attr)
-
-        for c in scores:
-            scores[c].append(merged[c])
-    return pd.DataFrame(scores)
-
+     
 
 def evaluate(labeled_profiles):
     name_matching_eval = {}
@@ -242,7 +301,7 @@ if __name__ == "__main__":
         attr_scores.to_csv(f"{SCORES_PATH}/name_matching_scores_{attr}.csv")
 
         attr_classes = CLASSES[attr]
-        predictions = attr_scores[attr_classes].apply(
+        predictions = attr_scores[list(attr_classes)].apply(
             lambda x: attr_classes[np.argmax(x.values)], axis=1
         )
         user_profiles[f"{attr}_name_predict"] = predictions

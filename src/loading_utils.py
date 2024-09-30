@@ -13,6 +13,9 @@ from format_data import (
 from match_names import predict_attrs_from_names
 
 
+name_matched_profiles_path = 'data/profiles_with_name_matching.csv'
+matched_profiles_path = 'data/profiles_with_name_matching.csv'
+names_mapping_path = "data/names_attribute_map.csv"
 def load_name_mapping(names_mapping_path="data/names_attribute_map.csv"):
     """Loads the dataframe which includes names labelled with their ethnicity, gender and religion.
     This dataframe has 2813 rows so far."""
@@ -52,8 +55,39 @@ def load_followership_data(adj_matrix_path, nodes_path):
     )
     return adj_matrix, nodes
 
+names_mapping_path ='data/names_attribute_map.csv'
+annotations_path = 'data/annotations_demographics.csv'
 
 def load_profiles_for_lp(matched_profiles_path, names_mapping_path, annotations_path):
+    """Load and preprocess user profiles along with matched names, and the labeled set."""
+    # Load users with matched names
+    name_matched_profiles = pd.read_csv(matched_profiles_path)
+    # Load mapping from names to demographic attributes and name list
+    names_mapping = load_name_mapping(names_mapping_path)
+    #names_mapping = pd.merge(name_matched_profiles,names_mapping,on='user_id')
+    # Load test set
+    labeled_profiles = pd.read_csv(annotations_path)
+    # Preprocess test set
+    labeled_profiles = labeled_profiles.dropna()
+    labeled_profiles = predict_attrs_from_names(labeled_profiles, names_mapping)
+    labeled_profiles = keep_valid_ids(labeled_profiles)
+
+    # Concatenate the labeled test set with matched names from the user set as those can also be used for label propagation
+    columns_to_keep = ["user_id"] + [f"{attr}_name_predict" for attr in CLASSES]
+    name_matched_profiles = pd.concat(
+        [name_matched_profiles[columns_to_keep], labeled_profiles[columns_to_keep]]
+    )
+    labeled_profiles = filter_test_set(labeled_profiles, columns_to_keep)
+    # Further preprocess profiles
+    name_matched_profiles["user_id"] = name_matched_profiles["user_id"].astype("int64")
+    name_matched_profiles = name_matched_profiles.drop_duplicates("user_id")
+    name_matched_profiles = name_matched_profiles.set_index("user_id")
+    return name_matched_profiles, labeled_profiles
+
+
+
+
+def load_prodfvdsfvdfvdffiles_for_lp(matched_profiles_path, names_mapping_path, annotations_path):
     """Load and preprocess user profiles along with matched names, and the labeled set."""
     # Load users with matched names
     name_matched_profiles = pd.read_csv(matched_profiles_path)
