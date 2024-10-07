@@ -40,7 +40,7 @@ def match_names(user_profiles, names_list):
 def predict_for_attr(attr, names_mapping, user_profiles):
     """Predict a demographic attribute for given users based on their matched name and screen name, and the name mapping to that attribute"""
     predictions = []
-    for _, row in user_profiles.itterrows():
+    for _, row in user_profiles.iterrows():
         matched_names = row["matched_name"] + row["matched_screen_name"]
         matched_names = [name.lower() for name in list(dict.fromkeys(matched_names))]
         if len(matched_names) > 0:
@@ -242,7 +242,7 @@ if __name__ == "__main__":
         attr_scores.to_csv(f"{SCORES_PATH}/name_matching_scores_{attr}.csv")
 
         attr_classes = CLASSES[attr]
-        predictions = attr_scores[attr_classes].apply(
+        predictions = attr_scores[list(attr_classes)].apply(
             lambda x: attr_classes[np.argmax(x.values)], axis=1
         )
         user_profiles[f"{attr}_name_predict"] = predictions
@@ -255,6 +255,8 @@ if __name__ == "__main__":
         # Load and preprocess labeled test users list
         labeled_profiles = pd.read_csv(args.annotations_path)
         labeled_profiles = labeled_profiles.dropna()
+        labeled_profiles = match_names(labeled_profiles, names_list)
+
         # Get predictions from name matching
         labeled_profiles = predict_attrs_from_names(labeled_profiles, names_mapping)
 

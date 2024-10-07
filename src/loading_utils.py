@@ -2,7 +2,7 @@ import pandas as pd
 import os
 from scipy.sparse import load_npz
 from sklearn.preprocessing import normalize
-from config import SCORES_PATH, CLASSES, NM_RESULTS_PATH
+from config import SCORES_PATH, CLASSES, NM_RESULTS_PATH, NAMES_TO_ATTRIBUTES_MAP
 import json
 from format_data import (
     filter_matrix,
@@ -10,7 +10,7 @@ from format_data import (
     keep_valid_ids,
     modify_gender,
 )
-from match_names import predict_attrs_from_names
+from match_names import predict_attrs_from_names, match_names
 
 
 def load_name_mapping(names_mapping_path="data/names_attribute_map.csv"):
@@ -64,6 +64,8 @@ def load_profiles_for_lp(matched_profiles_path, names_mapping_path, annotations_
     labeled_profiles = pd.read_csv(annotations_path)
     # Preprocess test set
     labeled_profiles = labeled_profiles.dropna()
+    names_list = load_names_list(NAMES_TO_ATTRIBUTES_MAP)
+    labeled_profiles = match_names(labeled_profiles, names_list)
     labeled_profiles = predict_attrs_from_names(labeled_profiles, names_mapping)
     labeled_profiles = keep_valid_ids(labeled_profiles)
 
